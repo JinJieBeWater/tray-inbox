@@ -61,3 +61,10 @@ func jump(ctx context.Context, adapters []agent.Adapter, id agent.ID) error {
 	}
 	return errors.New("no adapter for " + id.Orchestrator)
 }
+
+func openApp(ctx context.Context, adapters []agent.Adapter) error {
+	if len(adapters) != 1 {
+		return errors.New("no single orchestrator to open")
+	}
+	return adapters[0].Open(ctx)
+}

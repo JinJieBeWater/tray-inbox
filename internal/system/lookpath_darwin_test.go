@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,11 +23,11 @@ func TestLookPathUsesLoginShellOutput(t *testing.T) {
 	t3 := executable(t)
 	t.Setenv("SHELL", "/bin/bash")
 	var gotShell, gotScript string
-	l := newLookup(func(shell, script string) ([]byte, error) {
+	l := newLookup(func(_ context.Context, shell, script string) ([]byte, error) {
 		gotShell, gotScript = shell, script
 		return []byte("Welcome to your profile\n" + t3 + "\n"), nil
 	})
-	got, err := l.look("t3")
+	got, err := l.look(context.Background(), "t3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +43,11 @@ func TestLookPathDefaultsToZsh(t *testing.T) {
 	t3 := executable(t)
 	t.Setenv("SHELL", "")
 	var gotShell string
-	l := newLookup(func(shell, script string) ([]byte, error) {
+	l := newLookup(func(_ context.Context, shell, script string) ([]byte, error) {
 		gotShell = shell
 		return []byte(t3 + "\n"), nil
 	})
-	if _, err := l.look("t3"); err != nil {
+	if _, err := l.look(context.Background(), "t3"); err != nil {
 		t.Fatal(err)
 	}
 	if gotShell != "/bin/zsh" {
@@ -71,8 +72,8 @@ func TestLookPathNotFound(t *testing.T) {
 		"missing file":   {[]byte("/nonexistent/t3\n"), nil},
 	} {
 		t.Run(name, func(t *testing.T) {
-			l := newLookup(func(string, string) ([]byte, error) { return out.b, out.err })
-			if p, err := l.look("t3"); err == nil {
+			l := newLookup(func(context.Context, string, string) ([]byte, error) { return out.b, out.err })
+			if p, err := l.look(context.Background(), "t3"); err == nil {
 				t.Fatalf("found %q", p)
 			}
 		})
@@ -81,11 +82,11 @@ func TestLookPathNotFound(t *testing.T) {
 
 func TestLookPathRejectsUnsafeNames(t *testing.T) {
 	for _, name := range []string{"", "t3;rm", "a b", "$(x)", "../t3", "h\nc"} {
-		l := newLookup(func(string, string) ([]byte, error) {
+		l := newLookup(func(context.Context, string, string) ([]byte, error) {
 			t.Fatalf("ran the shell for %q", name)
 			return nil, nil
 		})
-		if _, err := l.look(name); err == nil {
+		if _, err := l.look(context.Background(), name); err == nil {
 			t.Fatalf("accepted %q", name)
 		}
 	}
@@ -95,7 +96,7 @@ func TestLookPathRunsOncePerName(t *testing.T) {
 	t3 := executable(t)
 	var runs atomic.Int32
 	release := make(chan struct{})
-	l := newLookup(func(string, string) ([]byte, error) {
+	l := newLookup(func(context.Context, string, string) ([]byte, error) {
 		runs.Add(1)
 		<-release
 		return []byte(t3 + "\n"), nil
@@ -104,7 +105,7 @@ func TestLookPathRunsOncePerName(t *testing.T) {
 	results := make(chan string, 8)
 	for range 8 {
 		wg.Go(func() {
-			p, err := l.look("t3")
+			p, err := l.look(context.Background(), "t3")
 			if err != nil {
 				t.Error(err)
 			}
@@ -122,8 +123,40 @@ func TestLookPathRunsOncePerName(t *testing.T) {
 	if n := runs.Load(); n != 1 {
 		t.Fatalf("shell ran %d times", n)
 	}
-	if _, err := l.look("t3"); err != nil || runs.Load() != 1 {
+	if _, err := l.look(context.Background(), "t3"); err != nil || runs.Load() != 1 {
 		t.Fatalf("cached lookup: err=%v runs=%d", err, runs.Load())
+	}
+}
+
+func TestLookPathRetriesAfterFailure(t *testing.T) {
+	t3 := executable(t)
+	var runs atomic.Int32
+	l := newLookup(func(context.Context, string, string) ([]byte, error) {
+		if runs.Add(1) == 1 {
+			return nil, errors.New("exit status 1")
+		}
+		return []byte(t3 + "\n"), nil
+	})
+	if _, err := l.look(context.Background(), "t3"); err == nil {
+		t.Fatal("first lookup succeeded")
+	}
+	got, err := l.look(context.Background(), "t3")
+	if err != nil || got != t3 {
+		t.Fatalf("second lookup = (%q, %v), want (%q, nil)", got, err, t3)
+	}
+	if _, err := l.look(context.Background(), "t3"); err != nil || runs.Load() != 2 {
+		t.Fatalf("third lookup should use cache: err=%v runs=%d", err, runs.Load())
+	}
+}
+
+func TestLookPathHonorsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	l := newLookup(func(ctx context.Context, _, _ string) ([]byte, error) {
+		return nil, ctx.Err()
+	})
+	if _, err := l.look(ctx, "t3"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
 

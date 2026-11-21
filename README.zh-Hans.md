@@ -26,7 +26,7 @@ xattr -dr com.apple.quarantine /Applications/TrayInbox.app
 
 TrayInbox 需要 T3 Code 正在运行，并且装好了 `t3` 命令。第一次启动时，TrayInbox 用 `t3` 给自己签发一个只读会话，把 token 存进钥匙串。
 
-- 点击菜单栏图标打开收件箱。等你处理的 agent 列在「收件箱」下，正在运行的列在「进行中」下。
+- 点击菜单栏图标打开收件箱。等你处理的 agent 列在「收件箱」下，正在运行的列在「进行中」下。没有任何 agent 时，图标显示 T3，点击直接切回 T3 Code。
 - 右键点击图标，可以打开「设置…」调整语言和开机启动，也可以选「检查更新…」。
 - T3 Code 关闭或连不上时，图标会显示已断开，收件箱里写明原因。
 

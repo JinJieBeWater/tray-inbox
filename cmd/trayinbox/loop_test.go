@@ -15,6 +15,7 @@ type fakeAdapter struct {
 	events  []agent.Event
 	emitted chan struct{}
 	jumps   []agent.ID
+	opens   int
 }
 
 func (f *fakeAdapter) Orchestrator() string { return f.name }
@@ -30,6 +31,11 @@ func (f *fakeAdapter) Run(ctx context.Context, emit func(agent.Event)) error {
 
 func (f *fakeAdapter) Jump(_ context.Context, id agent.ID) error {
 	f.jumps = append(f.jumps, id)
+	return nil
+}
+
+func (f *fakeAdapter) Open(_ context.Context) error {
+	f.opens++
 	return nil
 }
 
@@ -88,5 +94,21 @@ func TestJumpGoesToTheAdapterThatNamedTheAgent(t *testing.T) {
 	}
 	if err := jump(context.Background(), []agent.Adapter{hc, t3}, agent.ID{Orchestrator: "gone"}); err == nil {
 		t.Fatal("jumped to an orchestrator nobody runs")
+	}
+}
+
+func TestOpenAppRoutesToSoleAdapter(t *testing.T) {
+	t3 := &fakeAdapter{name: "t3"}
+	if err := openApp(context.Background(), []agent.Adapter{t3}); err != nil {
+		t.Fatalf("openApp = %v", err)
+	}
+	if t3.opens != 1 {
+		t.Fatalf("opens = %d, want 1", t3.opens)
+	}
+	if err := openApp(context.Background(), nil); err == nil {
+		t.Fatal("openApp succeeded with no adapters")
+	}
+	if err := openApp(context.Background(), []agent.Adapter{t3, &fakeAdapter{name: "hc"}}); err == nil {
+		t.Fatal("openApp succeeded with multiple adapters")
 	}
 }

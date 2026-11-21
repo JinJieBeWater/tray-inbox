@@ -18,12 +18,14 @@ import (
 )
 
 type Config struct {
-	UserData string // T3's state directory, ~/.t3/userdata when empty; only read
-	T3       string // path to t3; empty when it was not found
-	Tokens   TokenStore
-	OpenURL  func(string) error
-	Now      func() time.Time
-	After    func(time.Duration) <-chan time.Time
+	UserData   string // T3's state directory, ~/.t3/userdata when empty; only read
+	T3         string // path to t3; empty falls back to bundled CLI and LookT3
+	LookT3     func(context.Context) string
+	Tokens     TokenStore
+	OpenURL    func(string) error
+	OpenForPID func(ctx context.Context, pid int, url string) error
+	Now        func() time.Time
+	After      func(time.Duration) <-chan time.Time
 }
 
 type Adapter struct{ cfg Config }
@@ -74,6 +76,7 @@ type runner struct {
 	reason   agent.Reason
 	unproven bool   // the token was issued by this run and the server has not accepted it yet
 	token    string // the last token read or issued, so a keychain that fails cannot make every session issue
+	lookedT3 bool   // LookT3 already ran once; avoids respawning a login shell on every 30s retry
 }
 
 func (r *runner) send(ev agent.Event) {
@@ -169,12 +172,36 @@ func (a *Adapter) Jump(ctx context.Context, id agent.ID) error {
 	if !ok || env == "" || thread == "" {
 		return fmt.Errorf("t3: malformed id %q", id.Native)
 	}
+	link := "t3code://threads/" + url.PathEscape(env) + "/" + url.PathEscape(thread)
+	if a.cfg.OpenForPID != nil {
+		if rt, err := a.readRuntime(); err == nil && rt.PID > 0 {
+			if err := a.cfg.OpenForPID(ctx, rt.PID, link); err == nil {
+				return nil
+			}
+		}
+	}
 	if a.cfg.OpenURL == nil {
 		return errors.New("t3: cannot open links")
 	}
-	link := "t3code://threads/" + url.PathEscape(env) + "/" + url.PathEscape(thread)
 	if err := a.cfg.OpenURL(link); err != nil {
 		return fmt.Errorf("t3: open %s: %w", link, err)
+	}
+	return nil
+}
+
+func (a *Adapter) Open(ctx context.Context) error {
+	if a.cfg.OpenForPID == nil {
+		return errors.New("t3: cannot activate app")
+	}
+	rt, err := a.readRuntime()
+	if err != nil {
+		return fmt.Errorf("t3: read %s: %w", runtimeFile, err)
+	}
+	if rt.PID <= 0 {
+		return errors.New("t3: " + runtimeFile + " has no pid")
+	}
+	if err := a.cfg.OpenForPID(ctx, rt.PID, ""); err != nil {
+		return fmt.Errorf("t3: activate pid %d: %w", rt.PID, err)
 	}
 	return nil
 }

@@ -591,13 +591,144 @@ func TestJumpOpensTheDeepLink(t *testing.T) {
 	if err := a.Jump(context.Background(), id(2)); !errors.Is(err, openErr) {
 		t.Fatalf("Jump = %v, want the OpenURL error", err)
 	}
-	if want := []string{"t3code://threads/" + testEnv + "/" + tid(2)}; !reflect.DeepEqual(opened, want) {
-		t.Fatalf("opened %q, want %q", opened, want)
+	wantLink := "t3code://threads/" + testEnv + "/" + tid(2)
+	if !reflect.DeepEqual(opened, []string{wantLink}) {
+		t.Fatalf("opened %q, want [%q]", opened, wantLink)
 	}
 	if err := a.Jump(context.Background(), agent.ID{Orchestrator: "hc", Source: "local", Native: "x/y"}); err == nil {
 		t.Fatal("Jump took an hc agent")
 	}
 	if len(opened) != 1 {
 		t.Fatalf("opened %q", opened)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, runtimeFile), []byte(`{"origin":"http://127.0.0.1:3773","pid":4242}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var byPID []struct {
+		pid int
+		url string
+	}
+	opened = nil
+	a = New(Config{
+		UserData: dir,
+		OpenForPID: func(_ context.Context, pid int, u string) error {
+			byPID = append(byPID, struct {
+				pid int
+				url string
+			}{pid, u})
+			return nil
+		},
+		OpenURL: func(u string) error { opened = append(opened, u); return nil },
+	})
+	if err := a.Jump(context.Background(), id(2)); err != nil {
+		t.Fatalf("Jump via pid = %v", err)
+	}
+	if len(byPID) != 1 || byPID[0].pid != 4242 || byPID[0].url != wantLink || len(opened) != 0 {
+		t.Fatalf("byPID=%+v opened=%q, want pid 4242 link %q only", byPID, opened, wantLink)
+	}
+
+	a = New(Config{
+		UserData:   dir,
+		OpenForPID: func(_ context.Context, _ int, _ string) error { return errors.New("not a bundle") },
+		OpenURL:    func(u string) error { opened = append(opened, u); return nil },
+	})
+	if err := a.Jump(context.Background(), id(2)); err != nil {
+		t.Fatalf("Jump fallback = %v", err)
+	}
+	if !reflect.DeepEqual(opened, []string{wantLink}) {
+		t.Fatalf("fallback opened %q, want [%q]", opened, wantLink)
+	}
+}
+
+func TestOpenActivatesRuntimePID(t *testing.T) {
+	dir := t.TempDir()
+	var got []struct {
+		pid int
+		url string
+	}
+	a := New(Config{
+		UserData: dir,
+		OpenForPID: func(_ context.Context, pid int, u string) error {
+			got = append(got, struct {
+				pid int
+				url string
+			}{pid, u})
+			return nil
+		},
+	})
+	if err := a.Open(context.Background()); err == nil {
+		t.Fatal("Open succeeded without server-runtime.json")
+	}
+	if err := os.WriteFile(filepath.Join(dir, runtimeFile), []byte(`{"origin":"http://127.0.0.1:3773"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Open(context.Background()); err == nil {
+		t.Fatal("Open succeeded without pid in server-runtime.json")
+	}
+	if len(got) != 0 {
+		t.Fatalf("OpenForPID called with %+v before pid existed", got)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, runtimeFile), []byte(`{"origin":"http://127.0.0.1:3773","pid":4242}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Open(context.Background()); err != nil {
+		t.Fatalf("Open = %v", err)
+	}
+	if len(got) != 1 || got[0].pid != 4242 || got[0].url != "" {
+		t.Fatalf("OpenForPID got %+v, want [{4242 \"\"}]", got)
+	}
+
+	actErr := errors.New("process exited")
+	a = New(Config{
+		UserData:   dir,
+		OpenForPID: func(_ context.Context, _ int, _ string) error { return actErr },
+	})
+	if err := a.Open(context.Background()); !errors.Is(err, actErr) {
+		t.Fatalf("Open error = %v, want %v", err, actErr)
+	}
+}
+
+func TestIssueFindsBundledCLIWithoutRepeatingShellLookups(t *testing.T) {
+	base := t.TempDir()
+	userData := filepath.Join(base, "userdata")
+	if err := os.MkdirAll(userData, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	r := &runner{
+		Adapter: New(Config{
+			UserData: userData,
+			Tokens:   &fakeStore{},
+			LookT3: func(context.Context) string {
+				calls++
+				return ""
+			},
+		}),
+	}
+	if tok, reason := r.issue(context.Background()); tok != "" || reason != agent.ReasonNoCommand {
+		t.Fatalf("first issue = (%q, %q), want no-command", tok, reason)
+	}
+	if tok, reason := r.issue(context.Background()); tok != "" || reason != agent.ReasonNoCommand {
+		t.Fatalf("second issue = (%q, %q), want no-command", tok, reason)
+	}
+	if calls != 1 {
+		t.Fatalf("LookT3 ran %d times across repeated misses, want 1", calls)
+	}
+	binDir := filepath.Join(base, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "t3"), []byte("#!/bin/sh\necho '{\"token\":\"tok-late\"}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tok, reason := r.issue(context.Background())
+	if tok != "tok-late" || reason != "" {
+		t.Fatalf("issue after install = (%q, %q), want tok-late", tok, reason)
+	}
+	if calls != 1 {
+		t.Fatalf("LookT3 ran %d times after bundled bin appeared, want 1", calls)
 	}
 }

@@ -38,15 +38,26 @@ func waitRuntime(ctx context.Context, dir *fsnotify.Watcher, later <-chan time.T
 	}
 }
 
-func (a *Adapter) origin() (string, error) {
+type runtimeInfo struct {
+	Origin string `json:"origin"`
+	PID    int    `json:"pid"`
+}
+
+func (a *Adapter) readRuntime() (runtimeInfo, error) {
 	b, err := os.ReadFile(filepath.Join(a.cfg.UserData, runtimeFile))
 	if err != nil {
-		return "", err
+		return runtimeInfo{}, err
 	}
-	var rt struct {
-		Origin string `json:"origin"`
-	}
+	var rt runtimeInfo
 	if err := json.Unmarshal(b, &rt); err != nil {
+		return runtimeInfo{}, err
+	}
+	return rt, nil
+}
+
+func (a *Adapter) origin() (string, error) {
+	rt, err := a.readRuntime()
+	if err != nil {
 		return "", err
 	}
 	if rt.Origin == "" {

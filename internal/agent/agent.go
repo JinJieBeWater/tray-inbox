@@ -125,9 +125,10 @@ func (SourceStatus) event() {}
 
 // Adapter connects one orchestrator. Orchestrator is the name it stamps on every ID it
 // emits, which routes jumps back to it. Run calls emit from one goroutine at a time
-// and returns when ctx ends. Jump may be called concurrently with Run.
+// and returns when ctx ends. Jump and Open may be called concurrently with Run.
 type Adapter interface {
 	Orchestrator() string
 	Run(ctx context.Context, emit func(Event)) error
 	Jump(ctx context.Context, id ID) error
+	Open(ctx context.Context) error
 }

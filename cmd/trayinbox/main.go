@@ -38,6 +38,7 @@ type app struct {
 	icon     *trayicon.Icon
 	flyout   *flyout
 	settings *settingsWindow
+	empty    bool
 }
 
 func main() {
@@ -69,22 +70,27 @@ func (a *app) ready() {
 	a.icon = trayicon.New(func(png []byte) { _ = tray.SetIcon(png, true) })
 	a.flyout = newFlyout(tray, a.jump)
 	a.settings = newSettingsWindow()
-	tray.OnClick(a.flyout.Toggle)
+	tray.OnClick(a.click)
 	tray.OnRightClick(a.menu)
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
 
 	go func() {
 		defer close(a.stopped)
 		a.adapters = []agent.Adapter{
-			t3.New(t3.Config{T3: look("t3"), Tokens: tokens{system.Keychain{Service: "TrayInbox"}}, OpenURL: mygo.Shell.OpenExternal}),
+			t3.New(t3.Config{
+				LookT3:     func(ctx context.Context) string { return look(ctx, "t3") },
+				Tokens:     tokens{system.Keychain{Service: "TrayInbox"}},
+				OpenURL:    mygo.Shell.OpenExternal,
+				OpenForPID: system.OpenForPID,
+			}),
 		}
 		close(a.started)
 		run(a.ctx, a.adapters, time.Now, a.publish)
 	}()
 }
 
-func look(name string) string {
-	path, err := system.LookPath(name)
+func look(ctx context.Context, name string) string {
+	path, err := system.LookPathContext(ctx, name)
 	if err != nil {
 		return ""
 	}
@@ -94,9 +100,37 @@ func look(name string) string {
 // publish is called by the loop goroutine.
 func (a *app) publish(v inbox.View) {
 	mygo.RunOnMain(func() {
+		a.empty = v.Counts == (inbox.Counts{}) && len(v.Disconnected) == 0
 		a.icon.Update(v.Counts, len(v.Disconnected) > 0)
 		a.flyout.SetView(v)
 	})
+}
+
+func (a *app) click() {
+	if a.flyout.IsOpen() {
+		a.flyout.Close()
+		return
+	}
+	if a.empty {
+		go func() {
+			if err := a.open(); err != nil && a.ctx.Err() == nil {
+				log.Printf("open: %v", err)
+				mygo.RunOnMain(a.flyout.Open)
+			}
+		}()
+		return
+	}
+	a.flyout.Open()
+}
+
+// open may block; it is called off the main thread.
+func (a *app) open() error {
+	select {
+	case <-a.started:
+	case <-a.ctx.Done():
+		return a.ctx.Err()
+	}
+	return openApp(a.ctx, a.adapters)
 }
 
 // jump may block; it is called off the main thread.

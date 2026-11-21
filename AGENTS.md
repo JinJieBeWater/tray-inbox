@@ -37,7 +37,7 @@ We need to be on the same page with terminology. When communicating, use this la
 ## Ways to hurt yourself
 
 1. **Killing by pattern.** Never `pkill -f`, `pgrep | kill`, or `kill` a PID you found by matching a name, path, or worktree string. Your own agent process has this worktree's path in its argv, and this machine runs several other dev servers at once. Kill only a PID you captured at spawn, or the owner of your port after confirming its cwd is your worktree.
-2. **Writing to someone else's instance.** Observing is read-only: send no input, change no read state, never start or stop T3. Only a user's click on a row may open the matching app. Open `~/.t3/userdata` read-only; copying it out as test data is fine.
+2. **Writing to someone else's instance.** Observing is read-only: send no input, change no read state, never start or stop T3. Only a user's click on a row, or on the empty tray icon, may open the matching app. Open `~/.t3/userdata` read-only; copying it out as test data is fine.
 3. **Leaking or hardcoding credentials and addresses.** T3 tokens are issued with read-only scope only and never reach logs or the repo. Read T3's address from `server-runtime.json` every time. Tests use a temporary keychain file, never the login keychain.
 
 ## Hit every surface

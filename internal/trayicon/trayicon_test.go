@@ -24,26 +24,35 @@ func width(t *testing.T, c inbox.Counts, disconnected bool) int {
 }
 
 func TestRenderIsABlackTemplateOfTheMenuBarHeight(t *testing.T) {
-	img := decode(t, Render(inbox.Counts{Blocked: 1, Working: 12}, true, 2))
-	if h := img.Bounds().Dy(); h != 44 {
-		t.Errorf("height %d at scale 2, want 44", h)
-	}
-	inked := 0
-	b := img.Bounds()
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			r, g, bl, a := img.At(x, y).RGBA()
-			if a == 0 {
-				continue
-			}
-			inked++
-			if r|g|bl != 0 {
-				t.Fatalf("pixel %d,%d is not black: %d %d %d", x, y, r, g, bl)
+	for _, tc := range []struct {
+		name string
+		c    inbox.Counts
+		off  bool
+	}{
+		{"counts", inbox.Counts{Blocked: 1, Working: 12}, true},
+		{"empty", inbox.Counts{}, false},
+	} {
+		img := decode(t, Render(tc.c, tc.off, 2))
+		if h := img.Bounds().Dy(); h != 44 {
+			t.Errorf("%s: height %d at scale 2, want 44", tc.name, h)
+		}
+		inked := 0
+		b := img.Bounds()
+		for y := b.Min.Y; y < b.Max.Y; y++ {
+			for x := b.Min.X; x < b.Max.X; x++ {
+				r, g, bl, a := img.At(x, y).RGBA()
+				if a == 0 {
+					continue
+				}
+				inked++
+				if r|g|bl != 0 {
+					t.Fatalf("%s: pixel %d,%d is not black: %d %d %d", tc.name, x, y, r, g, bl)
+				}
 			}
 		}
-	}
-	if inked == 0 {
-		t.Error("nothing drawn")
+		if inked == 0 {
+			t.Errorf("%s: nothing drawn", tc.name)
+		}
 	}
 }
 

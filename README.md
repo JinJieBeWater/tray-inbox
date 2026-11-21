@@ -26,7 +26,7 @@ xattr -dr com.apple.quarantine /Applications/TrayInbox.app
 
 TrayInbox needs T3 Code running and its `t3` command installed. On first launch, TrayInbox uses `t3` to issue itself a read-only session and keeps the token in your keychain.
 
-- Click the menu bar icon to open the inbox. Agents that wait on you are listed under Inbox, and running ones under Working.
+- Click the menu bar icon to open the inbox. Agents that wait on you are listed under Inbox, and running ones under Working. When no agents are listed, the icon shows T3 and clicking it switches back to T3 Code.
 - Right-click the icon for settings, which hold the language and Open at Login, and to check for updates.
 - When T3 Code is closed or unreachable, the icon shows that it is disconnected and the inbox says why.
 

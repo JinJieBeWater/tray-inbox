@@ -2,9 +2,16 @@
 
 package system
 
-import "os/exec"
+import (
+	"context"
+	"os/exec"
+)
 
 func LookPath(name string) (string, error) { return exec.LookPath(name) }
+
+func LookPathContext(_ context.Context, name string) (string, error) { return exec.LookPath(name) }
+
+func OpenForPID(context.Context, int, string) error { return ErrUnsupported }
 
 func (Keychain) Get(account string) (string, error) { return "", ErrUnsupported }
 

@@ -13,12 +13,13 @@ import (
 
 // MyGo shows tray images 18pt tall, so the 22pt canvas is drawn at 22/18 of the sizes meant on screen.
 const (
-	height = 22
-	glyph  = 16
-	digits = 16
-	inner  = 4
-	outer  = 11
-	pad    = 1
+	height    = 22
+	glyph     = 16
+	emptySize = 17 // bare T3 mark: ~13pt cap height once scaled 22pt -> 18pt
+	digits    = 16
+	inner     = 4
+	outer     = 11
+	pad       = 1
 )
 
 var font = ui.Font{Size: digits, Weight: 500, Features: "tnum"}
@@ -30,12 +31,16 @@ var (
 	workingIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" fill="none" stroke="#000" stroke-width="2.4" stroke-dasharray="4.1 2.81" transform="rotate(-11 12 12)"/></svg>`))
 	offIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M6.5 12.5l3.5-3 4 5 3.5-3"/></svg>`))
 	idleIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 13h5.6l1.7 2.6h5.4l1.7-2.6H22v5a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z"/><path d="M2.8 12.4 5.7 6a1.9 1.9 0 0 1 1.7-1.1h9.2A1.9 1.9 0 0 1 18.3 6l2.9 6.4" fill="none" stroke="#000" stroke-width="2.2" stroke-linejoin="round"/></svg>`))
+	// T3 Code mark (MIT, from t3code/assets/prod/logo.svg).
+	emptyIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 35 98 61"><path d="M33.45 93V47.56H15.53V37H64.33V47.56H46.41V93H33.45ZM86.73 93.96C82.83 93.96 78.97 93.45 75.13 92.44C71.29 91.37 68.03 89.88 65.37 87.96L70.41 78.04C72.54 79.59 75.02 80.81 77.85 81.72C80.67 82.63 83.53 83.08 86.41 83.08C89.66 83.08 92.22 82.44 94.09 81.16C95.95 79.88 96.89 78.12 96.89 75.88C96.89 73.75 96.06 72.07 94.41 70.84C92.75 69.61 90.09 69 86.41 69H80.49V60.44L96.09 42.76L97.53 47.4H68.17V37H107.37V45.4L91.85 63.08L85.29 59.32H89.05C95.93 59.32 101.13 60.87 104.65 63.96C108.17 67.05 109.93 71.03 109.93 75.88C109.93 79.03 109.10 81.99 107.45 84.76C105.79 87.48 103.26 89.69 99.85 91.4C96.43 93.11 92.06 93.96 86.73 93.96Z"/></svg>`))
 )
 
 type cell struct {
 	icon *ui.SVG
 	text string
 	ink  ui.Color
+	size float32
+	w    float32
 }
 
 // Render draws error, blocked, done, idle and working counts left to right, leaving out zeros, with a disconnect glyph at the end.
@@ -47,14 +52,14 @@ func Render(c inbox.Counts, disconnected bool, scale float32) []byte {
 		n    int
 	}{{errorIcon, c.Error}, {blockedIcon, c.Blocked}, {doneIcon, c.Done}, {idleIcon, c.Idle}, {workingIcon, c.Working}} {
 		if n.n > 0 {
-			cells = append(cells, cell{n.icon, strconv.Itoa(n.n), black})
+			cells = append(cells, cell{n.icon, strconv.Itoa(n.n), black, glyph, glyph})
 		}
 	}
 	if disconnected {
-		cells = append(cells, cell{offIcon, "", black.Alpha(0.45)})
+		cells = append(cells, cell{offIcon, "", black.Alpha(0.45), glyph, glyph})
 	}
 	if len(cells) == 0 {
-		cells = append(cells, cell{idleIcon, "", black})
+		cells = append(cells, cell{emptyIcon, "", black, emptySize, float32(emptySize) * 98 / 61})
 	}
 
 	w := float32(2 * pad)
@@ -62,7 +67,7 @@ func Render(c inbox.Counts, disconnected bool, scale float32) []byte {
 		if i > 0 {
 			w += outer
 		}
-		w += glyph
+		w += cl.w
 		if cl.text != "" {
 			w += inner + advance(cl.text)
 		}
@@ -72,7 +77,7 @@ func Render(c inbox.Counts, disconnected bool, scale float32) []byte {
 		ui.Row(ctx).Height(height).PaddingX(pad).Gap(outer).Children(func() {
 			for _, cl := range cells {
 				ui.Row(ctx).Gap(inner).TextColor(cl.ink).Children(func() {
-					ui.Icon(ctx, cl.icon).FontSize(glyph)
+					ui.Icon(ctx, cl.icon).FontSize(cl.size)
 					if cl.text != "" {
 						ui.Text(ctx, cl.text).FontSize(font.Size).FontWeight(font.Weight).FontFeatures(font.Features).SingleLine()
 					}

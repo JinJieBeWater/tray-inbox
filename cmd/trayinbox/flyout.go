@@ -37,13 +37,7 @@ func (f *flyout) SetView(v inbox.View) {
 	f.invalidate()
 }
 
-func (f *flyout) Toggle() {
-	if f.win != nil {
-		f.Close()
-		return
-	}
-	f.Open()
-}
+func (f *flyout) IsOpen() bool { return f.win != nil }
 
 func (f *flyout) Open() {
 	if f.win != nil {
