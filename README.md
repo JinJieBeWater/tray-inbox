@@ -30,4 +30,4 @@ TrayInbox needs T3 Code running and its `t3` command installed. On first launch,
 - Right-click the icon for settings, which hold the language and Open at Login, and to check for updates.
 - When T3 Code is closed or unreachable, the icon shows that it is disconnected and the inbox says why.
 
-TrayInbox checks for updates only when you choose Check for Updates.
+TrayInbox checks for updates once a day and installs them in the background. An update takes effect the next time TrayInbox starts.

@@ -45,8 +45,7 @@ func main() {
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	mygo.App.SetName("TrayInbox")
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
-	// Checks only from the menu: a window popping up on its own would be a notification.
-	mygo.Use(updaternative.New(updater.Options{DisableAutomaticChecks: true}))
+	mygo.Use(updaternative.Plugin)
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnBeforeQuit(a.beforeQuit)
 	mygo.App.WhenReady(a.ready)
@@ -56,6 +55,8 @@ func main() {
 }
 
 func (a *app) ready() {
+	// Background checks install silently: an update window opening on its own would be a notification.
+	updater.SetAutomaticDownloads(true)
 	tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:             "trayinbox",
 		Icon:           trayicon.Render(inbox.Counts{}, false, 2),
