@@ -54,29 +54,22 @@ func TestLiveStreamMapsEveryThread(t *testing.T) {
 			}
 		}
 	}
-	if snap == nil || len(snap.Agents) < 20 {
-		t.Fatalf("snapshot = %v, want the recorded threads", snap)
+	if snap == nil || len(snap.Agents) != 6 {
+		t.Fatalf("snapshot = %v, want the 6 recorded listed threads", snap)
 	}
-	shown := map[string]bool{}
+	var projects int
 	for _, a := range snap.Agents {
-		shown[a.ID.Native] = true
-	}
-	var parents, projects int
-	for _, a := range snap.Agents {
-		if a.Parent != "" && !shown[a.Parent] {
-			t.Errorf("%s: parent %s is not shown, so T3 lists it nowhere", a.ID.Native, a.Parent)
+		if a.Parent != "" {
+			t.Errorf("%s: unlisted child thread emitted with parent %s", a.ID.Native, a.Parent)
 		}
 		if a.Title == "" || a.Kind == "" || a.Where == "" {
 			t.Errorf("%s: title %q kind %q where %q, want all set", a.ID.Native, a.Title, a.Kind, a.Where)
-		}
-		if a.Parent != "" {
-			parents++
 		}
 		if a.Project != "" {
 			projects++
 		}
 	}
-	if parents == 0 || projects == 0 {
-		t.Errorf("%d agents with a parent, %d with a project; want some of each", parents, projects)
+	if projects == 0 {
+		t.Errorf("0 agents with a project; want some")
 	}
 }

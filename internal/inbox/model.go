@@ -61,32 +61,54 @@ func (m *Model) drop(src source, keep map[agent.ID]bool) {
 	}
 }
 
+func clampTime(t, now time.Time) time.Time {
+	if !t.IsZero() && t.After(now) {
+		return now
+	}
+	return t
+}
+
 func (m *Model) upsert(a agent.Agent, now time.Time) {
 	t, ok := m.agents[a.ID]
 	if !ok {
-		first := now
-		if !a.Since.IsZero() && a.Since.Before(now) {
-			first = a.Since
-		}
 		t = &tracked{Agent: a}
 		if a.State == agent.Working {
-			t.started = first
+			if a.WorkingKind == agent.WorkWaiting {
+				t.started = clampTime(a.Since, now)
+			} else if !a.Since.IsZero() {
+				t.started = clampTime(a.Since, now)
+			} else {
+				t.started = now
+			}
 		} else {
-			t.returned = first
+			if !a.Since.IsZero() {
+				t.returned = clampTime(a.Since, now)
+			} else {
+				t.returned = now
+			}
 		}
 		m.agents[a.ID] = t
 		return
 	}
-	prev := t.State
+	prev, prevKind := t.State, t.WorkingKind
 	t.Agent = a
-	if a.State == prev {
+	if a.State == agent.Working {
+		switch {
+		case a.WorkingKind == agent.WorkWaiting:
+			t.started = clampTime(a.Since, now)
+		case !a.Since.IsZero():
+			t.started = clampTime(a.Since, now)
+		case prev != agent.Working || prevKind == agent.WorkWaiting:
+			t.started = now
+		}
 		return
 	}
-	if alerts(a.State) || prev == agent.Working {
-		t.returned = now
+	if !a.Since.IsZero() {
+		t.returned = clampTime(a.Since, now)
+		return
 	}
-	if a.State == agent.Working {
-		t.started = now
+	if a.State != prev && (alerts(a.State) || prev == agent.Working) {
+		t.returned = now
 	}
 }
 
@@ -163,13 +185,21 @@ func (m *Model) top(t *tracked) *tracked {
 	return cur
 }
 
+func orderAt(t *tracked, fallback time.Time) time.Time {
+	if !t.SortAt.IsZero() {
+		return t.SortAt
+	}
+	return fallback
+}
+
 func fold(top *tracked, ds []*tracked) Row {
 	slices.SortFunc(ds, func(a, b *tracked) int { return compareID(a.ID, b.ID) })
 	r := Row{
-		ID:    top.ID,
-		Info:  top.Info,
-		State: top.State,
-		At:    top.returned,
+		ID:     top.ID,
+		Info:   top.Info,
+		State:  top.State,
+		At:     top.returned,
+		SortAt: orderAt(top, top.returned),
 	}
 	var blocker, firstWorking *tracked
 	for _, d := range ds {
@@ -179,8 +209,7 @@ func fold(top *tracked, ds []*tracked) Row {
 				blocker = d
 			}
 		case agent.Working:
-			r.WorkingChildren++
-			if firstWorking == nil || d.started.Before(firstWorking.started) {
+			if firstWorking == nil || (!d.started.IsZero() && (firstWorking.started.IsZero() || d.started.Before(firstWorking.started))) {
 				firstWorking = d
 			}
 		}
@@ -189,21 +218,23 @@ func fold(top *tracked, ds []*tracked) Row {
 	case top.State == agent.Blocked || top.State == agent.Error:
 		r.BlockedWhy = top.BlockedWhy
 	case blocker != nil:
-		r.State, r.At = agent.Blocked, blocker.returned
+		r.State, r.At, r.SortAt = agent.Blocked, blocker.returned, orderAt(blocker, blocker.returned)
 		if blocker.State == agent.Blocked {
 			r.BlockedWhy = blocker.BlockedWhy
 		}
 	case top.State == agent.Done:
 	case top.State == agent.Working:
-		r.At = top.started
+		r.WorkingKind = top.WorkingKind
+		r.At, r.SortAt = top.started, orderAt(top, top.started)
 	case firstWorking != nil:
-		r.State, r.At = agent.Working, firstWorking.started
+		r.State, r.WorkingKind = agent.Working, firstWorking.WorkingKind
+		r.At, r.SortAt = firstWorking.started, orderAt(firstWorking, firstWorking.started)
 	}
 	return r
 }
 
 func byAt(a, b Row) int {
-	if c := b.At.Compare(a.At); c != 0 {
+	if c := b.SortAt.Compare(a.SortAt); c != 0 {
 		return c
 	}
 	return compareID(a.ID, b.ID)

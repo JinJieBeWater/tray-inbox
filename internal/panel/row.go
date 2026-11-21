@@ -17,7 +17,7 @@ func (p *Panel) row(c *ui.Context, r inbox.Row, pal palette, now time.Time) {
 	if hovered {
 		b.Background(pal.hover)
 	}
-	if r.State == agent.Working && !hovered {
+	if r.State == agent.Working && r.WorkingKind != agent.WorkWaiting && !hovered {
 		b.Opacity(.7)
 	}
 	id := r.ID
@@ -82,18 +82,13 @@ func (p *Panel) where(r inbox.Row) string {
 	if p.home != "" && (w == p.home || strings.HasPrefix(w, p.home+"/")) {
 		w = "~" + w[len(p.home):]
 	}
-	if r.WorkingChildren > 0 {
-		kids := locales.WorkingChildren(r.WorkingChildren)
-		if w == "" {
-			return kids
-		}
-		return w + " · " + kids
-	}
 	return w
 }
 
-// timed is T3's rule: only working rows and rows without a status show a time.
-func timed(r inbox.Row) bool { return r.State == agent.Working || r.State == agent.Idle }
+// timed is T3's rule: only working/waiting rows (when a start time is known) and idle rows show a time.
+func timed(r inbox.Row) bool {
+	return (r.State == agent.Working || r.State == agent.Idle) && !r.At.IsZero()
+}
 
 func status(c *ui.Context, r inbox.Row, pal palette, now time.Time) {
 	var icon *ui.SVG
@@ -107,13 +102,28 @@ func status(c *ui.Context, r inbox.Row, pal palette, now time.Time) {
 			icon, word = approvalIcon, locales.PendingApproval()
 		case agent.WhyQuestion:
 			icon, word, ink = questionIcon, locales.AwaitingInput(), pal.question
+		case agent.WhyRequest:
+			icon, word, ink = requestIcon, locales.GuestRequest(), pal.request
+		case agent.WhyLimited:
+			icon, word = alertIcon, locales.Limited()
+		case agent.WhyWoke:
+			icon, word = wokeIcon, locales.Woke()
 		}
 	case agent.Error:
 		icon, word, ink = alertIcon, locales.Failed(), pal.failed
 	case agent.Done:
 		icon, word, ink = doneIcon, locales.Completed(), pal.done
 	case agent.Working:
-		icon, word, ink = workingIcon, locales.Running(), pal.run
+		switch r.WorkingKind {
+		case agent.WorkWaiting:
+			icon, word, ink = waitingIcon, locales.Waiting(), pal.sub
+		case agent.WorkPreparing:
+			icon, word, ink = workingIcon, locales.SettingUp(), pal.run
+		case agent.WorkGoal:
+			icon, word, ink = workingIcon, locales.Goal(), pal.run
+		default:
+			icon, word, ink = workingIcon, locales.Running(), pal.run
+		}
 	}
 	ui.Row(c).Gap(4).MinWidth(32).Shrink(0).Justify(ui.End).TextColor(ink).FontSize(12).FixedLineHeight(16).FontFeatures("tnum").Children(func() {
 		if icon != nil {
@@ -121,12 +131,31 @@ func status(c *ui.Context, r inbox.Row, pal palette, now time.Time) {
 			ui.Text(c, word).FontWeight(500).SingleLine()
 		}
 		if timed(r) {
-			t := ui.Text(c, ago(now.Sub(r.At))).SingleLine()
+			label := ago(now.Sub(r.At))
+			if r.State == agent.Working {
+				label = workingAgo(now.Sub(r.At))
+			}
+			t := ui.Text(c, label).SingleLine()
 			if icon != nil {
 				t.FontWeight(500)
 			}
 		}
 	})
+}
+
+func workingAgo(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	secs := int(d / time.Second)
+	if secs < 60 {
+		return locales.Seconds(secs)
+	}
+	mins := secs / 60
+	if mins < 60 {
+		return locales.Minutes(mins)
+	}
+	return locales.HoursMinutes(mins/60, mins%60)
 }
 
 func ago(d time.Duration) string {

@@ -57,7 +57,7 @@ func (p *Panel) View(c *ui.Context) {
 	show := func(r inbox.Row) {
 		p.row(c, r, pal, now)
 		if timed(r) {
-			next = min(next, time.Minute-now.Sub(r.At)%time.Minute)
+			next = min(next, nextTick(r, now))
 		}
 	}
 	_, h := c.Size()
@@ -104,6 +104,14 @@ func (p *Panel) View(c *ui.Context) {
 	if next != time.Duration(math.MaxInt64) {
 		c.After(next)
 	}
+}
+
+func nextTick(r inbox.Row, now time.Time) time.Duration {
+	d := max(now.Sub(r.At), 0)
+	if r.State == agent.Working && d < time.Minute {
+		return time.Second - d%time.Second
+	}
+	return time.Minute - d%time.Minute
 }
 
 func reason(r agent.Reason) string {

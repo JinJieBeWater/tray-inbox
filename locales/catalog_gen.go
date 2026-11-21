@@ -162,18 +162,46 @@ func (msgs Messages) NoProject() string {
 	return Catalog.Format(msgs.locale, "noProject", nil)
 }
 
-// WorkingChildren says "{count, plural, one {# subagent working} other {# subagents working}}"
+// Waiting says "Waiting"
 // in the language the app shows.
 //
-// Under a row whose subagents are still working.
-func WorkingChildren(count int) string { return In(i18n.Locale()).WorkingChildren(count) }
+// Status of an agent waiting on background work or another thread.
+func Waiting() string { return In(i18n.Locale()).Waiting() }
 
-// WorkingChildren says "{count, plural, one {# subagent working} other {# subagents working}}"
+// Waiting says "Waiting"
 // in the language of msgs.
 //
-// Under a row whose subagents are still working.
-func (msgs Messages) WorkingChildren(count int) string {
-	return Catalog.Format(msgs.locale, "workingChildren", map[string]any{"count": count})
+// Status of an agent waiting on background work or another thread.
+func (msgs Messages) Waiting() string {
+	return Catalog.Format(msgs.locale, "waiting", nil)
+}
+
+// SettingUp says "Setting up"
+// in the language the app shows.
+//
+// Status of an agent preparing to run.
+func SettingUp() string { return In(i18n.Locale()).SettingUp() }
+
+// SettingUp says "Setting up"
+// in the language of msgs.
+//
+// Status of an agent preparing to run.
+func (msgs Messages) SettingUp() string {
+	return Catalog.Format(msgs.locale, "settingUp", nil)
+}
+
+// Goal says "Goal"
+// in the language the app shows.
+//
+// Status of an agent actively working on a goal.
+func Goal() string { return In(i18n.Locale()).Goal() }
+
+// Goal says "Goal"
+// in the language of msgs.
+//
+// Status of an agent actively working on a goal.
+func (msgs Messages) Goal() string {
+	return Catalog.Format(msgs.locale, "goal", nil)
 }
 
 // PendingApproval says "Approval"
@@ -202,6 +230,48 @@ func AwaitingInput() string { return In(i18n.Locale()).AwaitingInput() }
 // Status of an agent waiting for an answer.
 func (msgs Messages) AwaitingInput() string {
 	return Catalog.Format(msgs.locale, "awaitingInput", nil)
+}
+
+// GuestRequest says "Request"
+// in the language the app shows.
+//
+// Status of an agent with a waiting guest message.
+func GuestRequest() string { return In(i18n.Locale()).GuestRequest() }
+
+// GuestRequest says "Request"
+// in the language of msgs.
+//
+// Status of an agent with a waiting guest message.
+func (msgs Messages) GuestRequest() string {
+	return Catalog.Format(msgs.locale, "guestRequest", nil)
+}
+
+// Limited says "Limited"
+// in the language the app shows.
+//
+// Status of an agent blocked by a usage limit.
+func Limited() string { return In(i18n.Locale()).Limited() }
+
+// Limited says "Limited"
+// in the language of msgs.
+//
+// Status of an agent blocked by a usage limit.
+func (msgs Messages) Limited() string {
+	return Catalog.Format(msgs.locale, "limited", nil)
+}
+
+// Woke says "Woke"
+// in the language the app shows.
+//
+// Status of an agent that woke from snooze.
+func Woke() string { return In(i18n.Locale()).Woke() }
+
+// Woke says "Woke"
+// in the language of msgs.
+//
+// Status of an agent that woke from snooze.
+func (msgs Messages) Woke() string {
+	return Catalog.Format(msgs.locale, "woke", nil)
 }
 
 // NeedsAttention says "Needs attention"
@@ -246,18 +316,32 @@ func (msgs Messages) Completed() string {
 	return Catalog.Format(msgs.locale, "completed", nil)
 }
 
-// JustNow says "just now"
+// JustNow says "now"
 // in the language the app shows.
 //
-// Age under a minute.
+// Idle age under a minute.
 func JustNow() string { return In(i18n.Locale()).JustNow() }
 
-// JustNow says "just now"
+// JustNow says "now"
 // in the language of msgs.
 //
-// Age under a minute.
+// Idle age under a minute.
 func (msgs Messages) JustNow() string {
 	return Catalog.Format(msgs.locale, "justNow", nil)
+}
+
+// Seconds says "{count}s"
+// in the language the app shows.
+//
+// Working duration under a minute, abbreviated.
+func Seconds(count int) string { return In(i18n.Locale()).Seconds(count) }
+
+// Seconds says "{count}s"
+// in the language of msgs.
+//
+// Working duration under a minute, abbreviated.
+func (msgs Messages) Seconds(count int) string {
+	return Catalog.Format(msgs.locale, "seconds", map[string]any{"count": count})
 }
 
 // Minutes says "{count}m"
@@ -286,6 +370,22 @@ func Hours(count int) string { return In(i18n.Locale()).Hours(count) }
 // Age in hours, abbreviated.
 func (msgs Messages) Hours(count int) string {
 	return Catalog.Format(msgs.locale, "hours", map[string]any{"count": count})
+}
+
+// HoursMinutes says "{hours}h {minutes}m"
+// in the language the app shows.
+//
+// Working duration of an hour or more, abbreviated.
+func HoursMinutes(hours int, minutes int) string {
+	return In(i18n.Locale()).HoursMinutes(hours, minutes)
+}
+
+// HoursMinutes says "{hours}h {minutes}m"
+// in the language of msgs.
+//
+// Working duration of an hour or more, abbreviated.
+func (msgs Messages) HoursMinutes(hours int, minutes int) string {
+	return Catalog.Format(msgs.locale, "hoursMinutes", map[string]any{"hours": hours, "minutes": minutes})
 }
 
 // Days says "{count}d"

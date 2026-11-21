@@ -33,13 +33,30 @@ func TestSaysTheAppLanguage(t *testing.T) {
 	inEnglish(t)
 	b := row("a", agent.Blocked, "Review", 0)
 	b.BlockedWhy = agent.WhyPermission
-	h := open(t, inbox.View{Inbox: []inbox.Row{b}, Running: []inbox.Row{row("b", agent.Working, "Busy", 3*time.Minute)}})
+	w := row("c", agent.Working, "Waiting on task", 6*time.Minute)
+	w.WorkingKind = agent.WorkWaiting
+	h := open(t, inbox.View{
+		Inbox:   []inbox.Row{b},
+		Running: []inbox.Row{row("b", agent.Working, "Busy", 3*time.Minute), w},
+	})
 	h.shows("Inbox", true)
 	h.shows("1 unread", true)
 	h.shows("Approval", true)
 	h.shows("Working", true)
+	h.click("Working")
+	h.shows("Waiting", true)
+	h.shows("6m", true)
 	if got := ago(2 * time.Hour); got != "2h" {
 		t.Errorf("ago = %q, want 2h", got)
+	}
+	if got := ago(10 * time.Second); got != "now" {
+		t.Errorf("ago(10s) = %q, want now", got)
+	}
+	if got := workingAgo(45 * time.Second); got != "45s" {
+		t.Errorf("workingAgo(45s) = %q, want 45s", got)
+	}
+	if got := workingAgo(65 * time.Minute); got != "1h 5m" {
+		t.Errorf("workingAgo(65m) = %q, want 1h 5m", got)
 	}
 }
 
@@ -140,6 +157,9 @@ func TestStatusWords(t *testing.T) {
 	}{
 		{agent.Blocked, agent.WhyPermission, "等你批准"},
 		{agent.Blocked, agent.WhyQuestion, "等你回答"},
+		{agent.Blocked, agent.WhyRequest, "访客消息"},
+		{agent.Blocked, agent.WhyLimited, "额度受限"},
+		{agent.Blocked, agent.WhyWoke, "已唤醒"},
 		{agent.Blocked, agent.WhyOther, "等你处理"},
 		{agent.Error, "", "失败"},
 		{agent.Done, "", "完成"},
@@ -150,10 +170,63 @@ func TestStatusWords(t *testing.T) {
 		h.shows(c.word, true)
 		h.shows("1 小时", false)
 	}
+	for _, c := range []struct {
+		kind agent.WorkingKind
+		word string
+	}{
+		{agent.WorkRunning, "进行中"},
+		{agent.WorkPreparing, "准备中"},
+		{agent.WorkGoal, "目标"},
+		{agent.WorkWaiting, "等待中"},
+	} {
+		r := row("a", agent.Working, "T", 6*time.Minute)
+		r.WorkingKind = c.kind
+		h := open(t, inbox.View{Running: []inbox.Row{r}})
+		h.shows(c.word, true)
+		h.shows("6 分钟", true)
+	}
+	// Waiting with zero At (blockedOnThreadWait) shows Waiting without a duration.
+	w := row("w", agent.Working, "T", 0)
+	w.WorkingKind, w.At = agent.WorkWaiting, time.Time{}
+	hw := open(t, inbox.View{Running: []inbox.Row{w}})
+	hw.shows("等待中", true)
+	hw.shows("0 秒", false)
+	hw.shows("刚刚", false)
+
 	h := open(t, inbox.View{Inbox: []inbox.Row{row("a", agent.Idle, "T", time.Hour)}})
 	h.shows("1 小时", true)
-	for _, w := range []string{"等你处理", "失败", "完成", "进行中"} {
+	for _, w := range []string{"等你处理", "失败", "完成", "进行中", "等待中"} {
 		h.shows(w, false)
+	}
+}
+
+func TestWorkingAgoAndSecondRefresh(t *testing.T) {
+	for _, c := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{-time.Second, "0 秒"},
+		{0, "0 秒"},
+		{45 * time.Second, "45 秒"},
+		{time.Minute, "1 分钟"},
+		{59*time.Minute + 59*time.Second, "59 分钟"},
+		{time.Hour, "1 小时 0 分钟"},
+		{time.Hour + 5*time.Minute, "1 小时 5 分钟"},
+	} {
+		if got := workingAgo(c.d); got != c.want {
+			t.Errorf("workingAgo(%v) = %q, want %q", c.d, got, c.want)
+		}
+	}
+	h := open(t, inbox.View{Running: []inbox.Row{row("a", agent.Working, "T", 58*time.Second)}})
+	h.shows("58 秒", true)
+	h.advance(time.Second)
+	h.shows("59 秒", true)
+	h.advance(time.Second)
+	h.shows("1 分钟", true)
+	h.advance(59 * time.Second)
+	h.shows("1 分钟", true)
+	if h.tt.FramePending() {
+		t.Error("asks for frames before the next minute after crossing 1m")
 	}
 }
 
@@ -313,19 +386,15 @@ func TestThirdLine(t *testing.T) {
 	}
 	a := row("a", agent.Done, "Local", 0)
 	a.Where = home + "/my/perch"
-	b := row("b", agent.Working, "Parent", 0)
+	b := row("b", agent.Working, "Branch", 0)
 	b.Where = "main"
-	b.WorkingChildren = 2
-	c := row("c", agent.Working, "Only children", 0)
-	c.WorkingChildren = 1
 	d := row("d", agent.Idle, "Elsewhere", 0)
 	d.Where = home + "other"
-	h := open(t, inbox.View{Inbox: []inbox.Row{a, d}, Running: []inbox.Row{b, c}})
+	h := open(t, inbox.View{Inbox: []inbox.Row{a, d}, Running: []inbox.Row{b}})
 	h.click("进行中")
 	h.shows("~/my/perch", true)
 	h.shows(home+"other", true)
-	h.shows("main · 2 个子 agent 进行中", true)
-	h.shows("1 个子 agent 进行中", true)
+	h.shows("main", true)
 }
 
 func TestNoProject(t *testing.T) {

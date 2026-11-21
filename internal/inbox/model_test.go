@@ -18,10 +18,12 @@ func id(native string) agent.ID {
 
 type mod func(*agent.Agent)
 
-func since(t time.Time) mod      { return func(a *agent.Agent) { a.Since = t } }
-func parent(p string) mod        { return func(a *agent.Agent) { a.Parent = p } }
-func why(w agent.BlockedWhy) mod { return func(a *agent.Agent) { a.BlockedWhy = w } }
-func withID(i agent.ID) mod      { return func(a *agent.Agent) { a.ID = i; a.Title = i.Native } }
+func since(t time.Time) mod        { return func(a *agent.Agent) { a.Since = t } }
+func sortAt(t time.Time) mod       { return func(a *agent.Agent) { a.SortAt = t } }
+func parent(p string) mod          { return func(a *agent.Agent) { a.Parent = p } }
+func why(w agent.BlockedWhy) mod   { return func(a *agent.Agent) { a.BlockedWhy = w } }
+func wkind(k agent.WorkingKind) mod { return func(a *agent.Agent) { a.WorkingKind = k } }
+func withID(i agent.ID) mod        { return func(a *agent.Agent) { a.ID = i; a.Title = i.Native } }
 
 func ag(native string, s agent.State, mods ...mod) agent.Agent {
 	a := agent.Agent{ID: id(native), Info: agent.Info{Title: native}, State: s}
@@ -33,12 +35,13 @@ func ag(native string, s agent.State, mods ...mod) agent.Agent {
 
 type rmod func(*Row)
 
-func rwhy(w agent.BlockedWhy) rmod { return func(r *Row) { r.BlockedWhy = w } }
-func kids(n int) rmod              { return func(r *Row) { r.WorkingChildren = n } }
-func rid(i agent.ID) rmod          { return func(r *Row) { r.ID = i; r.Title = i.Native } }
+func rwhy(w agent.BlockedWhy) rmod   { return func(r *Row) { r.BlockedWhy = w } }
+func rwkind(k agent.WorkingKind) rmod { return func(r *Row) { r.WorkingKind = k } }
+func rsort(t time.Time) rmod         { return func(r *Row) { r.SortAt = t } }
+func rid(i agent.ID) rmod            { return func(r *Row) { r.ID = i; r.Title = i.Native } }
 
 func row(native string, s agent.State, at time.Time, mods ...rmod) Row {
-	r := Row{ID: id(native), Info: agent.Info{Title: native}, State: s, At: at}
+	r := Row{ID: id(native), Info: agent.Info{Title: native}, State: s, At: at, SortAt: at}
 	for _, m := range mods {
 		m(&r)
 	}
@@ -123,12 +126,25 @@ func TestTimes(t *testing.T) {
 			running: []Row{row("a", agent.Working, t0)},
 		},
 		{
-			name: "entering blocked sets now, not Since",
+			name:    "first sight waiting with zero Since keeps zero At",
+			steps:   []step{up(ag("a", agent.Working, wkind(agent.WorkWaiting)), t0)},
+			running: []Row{row("a", agent.Working, time.Time{}, rwkind(agent.WorkWaiting))},
+		},
+		{
+			name: "entering blocked without Since sets now",
+			steps: []step{
+				up(ag("a", agent.Idle, since(mins(-10))), t0),
+				up(ag("a", agent.Blocked), mins(1)),
+			},
+			inbox: []Row{row("a", agent.Blocked, mins(1))},
+		},
+		{
+			name: "entering blocked with Since uses Since",
 			steps: []step{
 				up(ag("a", agent.Idle, since(mins(-10))), t0),
 				up(ag("a", agent.Blocked, since(mins(-3))), mins(1)),
 			},
-			inbox: []Row{row("a", agent.Blocked, mins(1))},
+			inbox: []Row{row("a", agent.Blocked, mins(-3))},
 		},
 		{
 			name: "entering error sets now",
@@ -139,12 +155,20 @@ func TestTimes(t *testing.T) {
 			inbox: []Row{row("a", agent.Error, mins(2))},
 		},
 		{
-			name: "done to idle keeps the returned time",
+			name: "done to idle without Since keeps the returned time",
 			steps: []step{
 				up(ag("a", agent.Done), t0),
-				up(ag("a", agent.Idle, since(mins(5))), mins(5)),
+				up(ag("a", agent.Idle), mins(5)),
 			},
 			inbox: []Row{row("a", agent.Idle, t0)},
+		},
+		{
+			name: "done to idle with Since uses Since",
+			steps: []step{
+				up(ag("a", agent.Done), t0),
+				up(ag("a", agent.Idle, since(mins(4))), mins(5)),
+			},
+			inbox: []Row{row("a", agent.Idle, mins(4))},
 		},
 		{
 			name: "done again after idle sets now",
@@ -156,12 +180,20 @@ func TestTimes(t *testing.T) {
 			inbox: []Row{row("a", agent.Done, mins(10))},
 		},
 		{
-			name: "idle to idle keeps the returned time",
+			name: "idle to idle without Since keeps the returned time",
+			steps: []step{
+				up(ag("a", agent.Idle, since(mins(-10))), t0),
+				up(ag("a", agent.Idle), mins(5)),
+			},
+			inbox: []Row{row("a", agent.Idle, mins(-10))},
+		},
+		{
+			name: "idle to idle with newer Since updates At",
 			steps: []step{
 				up(ag("a", agent.Idle, since(mins(-10))), t0),
 				up(ag("a", agent.Idle, since(mins(-1))), mins(5)),
 			},
-			inbox: []Row{row("a", agent.Idle, mins(-10))},
+			inbox: []Row{row("a", agent.Idle, mins(-1))},
 		},
 		{
 			name: "blocked with a new reason keeps the returned time",
@@ -172,27 +204,48 @@ func TestTimes(t *testing.T) {
 			inbox: []Row{row("a", agent.Blocked, t0, rwhy(agent.WhyQuestion))},
 		},
 		{
-			name: "leaving working to idle sets now",
+			name: "leaving working to idle without Since sets now",
 			steps: []step{
 				up(ag("a", agent.Idle, since(mins(-10))), t0),
 				up(ag("a", agent.Working), mins(2)),
-				up(ag("a", agent.Idle, since(mins(-10))), mins(7)),
+				up(ag("a", agent.Idle), mins(7)),
 			},
 			inbox: []Row{row("a", agent.Idle, mins(7))},
 		},
 		{
-			name: "entering working sets started to now, not Since",
+			name: "entering working without Since sets started to now",
 			steps: []step{
 				up(ag("a", agent.Idle), t0),
-				up(ag("a", agent.Working, since(mins(-100))), mins(3)),
+				up(ag("a", agent.Working), mins(3)),
 			},
 			running: []Row{row("a", agent.Working, mins(3))},
 		},
 		{
-			name: "staying working keeps the started time",
+			name: "entering working with Since uses authoritative Since",
+			steps: []step{
+				up(ag("a", agent.Idle), t0),
+				up(ag("a", agent.Working, since(mins(-5))), mins(3)),
+			},
+			running: []Row{row("a", agent.Working, mins(-5))},
+		},
+		{
+			name: "working to waiting switches to waiting Since or zero",
+			steps: []step{
+				up(ag("a", agent.Working, since(mins(-8))), t0),
+				up(ag("a", agent.Working, wkind(agent.WorkWaiting), since(mins(-2))), mins(1)),
+				up(ag("b", agent.Working, since(mins(-8))), t0),
+				up(ag("b", agent.Working, wkind(agent.WorkWaiting)), mins(1)),
+			},
+			running: []Row{
+				row("a", agent.Working, mins(-2), rwkind(agent.WorkWaiting)),
+				row("b", agent.Working, time.Time{}, rwkind(agent.WorkWaiting)),
+			},
+		},
+		{
+			name: "staying working without Since keeps the started time",
 			steps: []step{
 				up(ag("a", agent.Working), t0),
-				up(ag("a", agent.Working, since(mins(4))), mins(5)),
+				up(ag("a", agent.Working), mins(5)),
 			},
 			running: []Row{row("a", agent.Working, t0)},
 		},
@@ -229,6 +282,23 @@ func TestSort(t *testing.T) {
 				row("b", agent.Working, mins(-10)),
 				row("c", agent.Working, mins(-20)),
 				row("a", agent.Working, mins(-30)),
+			},
+		},
+		{
+			name: "explicit SortAt overrides display At for ordering",
+			steps: []step{
+				up(ag("w1", agent.Working, since(mins(-8)), sortAt(mins(-1))), t0),
+				up(ag("w2", agent.Working, wkind(agent.WorkWaiting), since(mins(-2)), sortAt(mins(-10))), t0),
+				up(ag("i1", agent.Idle, since(mins(-30)), sortAt(mins(-1))), t0),
+				up(ag("i2", agent.Done, since(mins(-5)), sortAt(mins(-5))), t0),
+			},
+			inbox: []Row{
+				row("i1", agent.Idle, mins(-30), rsort(mins(-1))),
+				row("i2", agent.Done, mins(-5), rsort(mins(-5))),
+			},
+			running: []Row{
+				row("w1", agent.Working, mins(-8), rsort(mins(-1))),
+				row("w2", agent.Working, mins(-2), rwkind(agent.WorkWaiting), rsort(mins(-10))),
 			},
 		},
 		{
@@ -292,7 +362,7 @@ func TestFold(t *testing.T) {
 				up(ag("p", agent.Blocked, why(agent.WhyQuestion), since(mins(-5))), t0),
 				up(ag("c", agent.Working, parent("p"), since(mins(-1))), t0),
 			},
-			inbox: []Row{row("p", agent.Blocked, mins(-5), rwhy(agent.WhyQuestion), kids(1))},
+			inbox: []Row{row("p", agent.Blocked, mins(-5), rwhy(agent.WhyQuestion))},
 		},
 		{
 			name: "parent's own error beats a blocked child",
@@ -308,7 +378,7 @@ func TestFold(t *testing.T) {
 				up(ag("p", agent.Done, since(mins(-6))), t0),
 				up(ag("c", agent.Working, parent("p"), since(mins(-1))), t0),
 			},
-			inbox: []Row{row("p", agent.Done, mins(-6), kids(1))},
+			inbox: []Row{row("p", agent.Done, mins(-6))},
 		},
 		{
 			name: "a done child does not alert",
@@ -325,7 +395,7 @@ func TestFold(t *testing.T) {
 				up(ag("c1", agent.Working, parent("p"), since(mins(-3))), t0),
 				up(ag("c2", agent.Working, parent("p"), since(mins(-8))), t0),
 			},
-			running: []Row{row("p", agent.Working, mins(-8), kids(2))},
+			running: []Row{row("p", agent.Working, mins(-8))},
 		},
 		{
 			name: "a working parent uses its own start",
@@ -333,7 +403,7 @@ func TestFold(t *testing.T) {
 				up(ag("p", agent.Working, since(mins(-2))), t0),
 				up(ag("c", agent.Working, parent("p"), since(mins(-8))), t0),
 			},
-			running: []Row{row("p", agent.Working, mins(-2), kids(1))},
+			running: []Row{row("p", agent.Working, mins(-2))},
 		},
 		{
 			name: "otherwise the parent's own state and time",
@@ -344,14 +414,14 @@ func TestFold(t *testing.T) {
 			inbox: []Row{row("p", agent.Idle, mins(-10))},
 		},
 		{
-			name: "grandchildren fold into the topmost parent and count at any depth",
+			name: "grandchildren fold into the topmost parent",
 			steps: []step{
 				up(ag("p", agent.Idle, since(mins(-30))), t0),
 				up(ag("c", agent.Working, parent("p"), since(mins(-6))), t0),
 				up(ag("g", agent.Working, parent("c"), since(mins(-3))), t0),
 				up(ag("gg", agent.Blocked, parent("g"), why(agent.WhyQuestion), since(mins(-1))), t0),
 			},
-			inbox: []Row{row("p", agent.Blocked, mins(-1), rwhy(agent.WhyQuestion), kids(2))},
+			inbox: []Row{row("p", agent.Blocked, mins(-1), rwhy(agent.WhyQuestion))},
 		},
 		{
 			name: "a child whose parent is absent is a top row and gathers its own children",
@@ -397,7 +467,7 @@ func TestFoldFieldsComeFromTop(t *testing.T) {
 	v := run([]step{up(p, t0), up(c, t0)})
 	want := []Row{{
 		ID: id("p"), Info: agent.Info{Project: "perch", Title: "p", Where: "~/perch", Kind: "claude"},
-		State: agent.Blocked, At: mins(-1),
+		State: agent.Blocked, At: mins(-1), SortAt: mins(-1),
 	}}
 	if !reflect.DeepEqual(v.Inbox, want) {
 		t.Fatalf("got %+v, want %+v", v.Inbox, want)
@@ -442,10 +512,10 @@ func TestSources(t *testing.T) {
 			},
 		},
 		{
-			name: "an agent kept across snapshots keeps its times",
+			name: "an agent kept across snapshots without Since keeps its times",
 			steps: []step{
 				snap(t0, ag("a", agent.Done)),
-				snap(mins(5), ag("a", agent.Done, since(mins(4)))),
+				snap(mins(5), ag("a", agent.Done)),
 			},
 			want: View{
 				Disconnected: []Disconnect{},
@@ -592,9 +662,10 @@ func TestCountsFollowFoldedRows(t *testing.T) {
 		up(ag("w1", agent.Working), t0),
 		up(ag("w2", agent.Idle), t0),
 		up(ag("w2c", agent.Working, parent("w2")), t0),
+		up(ag("w3", agent.Working, wkind(agent.WorkWaiting)), t0),
 		up(ag("i", agent.Idle), t0),
 	})
-	want := Counts{Error: 1, Blocked: 2, Done: 1, Idle: 1, Working: 2}
+	want := Counts{Error: 1, Blocked: 2, Done: 1, Idle: 1, Working: 3}
 	if v.Counts != want {
 		t.Fatalf("got %+v, want %+v", v.Counts, want)
 	}

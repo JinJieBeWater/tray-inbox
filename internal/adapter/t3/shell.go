@@ -10,6 +10,7 @@ import (
 
 // shellThread holds the OrchestrationV2ThreadShell fields TrayInbox reads (packages/contracts/src/orchestrationV2.ts).
 type shellThread struct {
+	CreationSource     string `json:"creationSource"`
 	ID                 string `json:"id"`
 	ProjectID          string `json:"projectId"`
 	Title              string `json:"title"`
@@ -28,34 +29,46 @@ type shellThread struct {
 	} `json:"lineage"`
 	LatestRunID           *string    `json:"latestRunId"`
 	LatestRunRequestedAt  *time.Time `json:"latestRunRequestedAt"`
+	LatestRunStartedAt    *time.Time `json:"latestRunStartedAt"`
 	LatestRunCompletedAt  optTime    `json:"latestRunCompletedAt"`
 	ActiveRunID           *string    `json:"activeRunId"`
-	ActivityRunStatus     *string    `json:"activityRunStatus"`
+	ActivityRunStartedAt  optTime    `json:"activityRunStartedAt"`
+	ActivityRunStatus     optString  `json:"activityRunStatus"`
+	BlockedOnThreadWait   bool       `json:"blockedOnThreadWait"`
 	Status                string     `json:"status"`
 	LastError             *string    `json:"lastError"`
+	LastErrorClass        *string    `json:"lastErrorClass"`
 	PendingRuntimeRequest *struct {
 		Kind      string    `json:"kind"`
 		CreatedAt time.Time `json:"createdAt"`
+		UserOnly  bool      `json:"userOnly"`
 	} `json:"pendingRuntimeRequest"`
-	PendingGuestMessageCount  int  `json:"pendingGuestMessageCount"`
-	HasActionableProposedPlan bool `json:"hasActionableProposedPlan"`
-	PendingBackgroundTasks    []struct {
+	PendingGuestMessageCount    int        `json:"pendingGuestMessageCount"`
+	LatestUserMessageAt         *time.Time `json:"latestUserMessageAt"`
+	LatestUserAuthoredMessageAt optTime    `json:"latestUserAuthoredMessageAt"`
+	HasActionableProposedPlan   bool       `json:"hasActionableProposedPlan"`
+	PendingBackgroundTasks      []struct {
 		Kind    string `json:"kind"`
 		Awaited bool   `json:"awaited"`
 	} `json:"pendingBackgroundTasks"`
+	Goal *struct {
+		Status string `json:"status"`
+	} `json:"goal"`
+	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
 	ArchivedAt      *time.Time `json:"archivedAt"`
 	DeletedAt       *time.Time `json:"deletedAt"`
 	PinnedAt        *time.Time `json:"pinnedAt"`
 	SettledOverride *string    `json:"settledOverride"`
 	SettledAt       *time.Time `json:"settledAt"`
+	UnsettledAt     *time.Time `json:"unsettledAt"`
 	SnoozedUntil    *time.Time `json:"snoozedUntil"`
 	SnoozedAt       *time.Time `json:"snoozedAt"`
 	ActiveOrderKey  *string    `json:"activeOrderKey"`
 	LastVisitedAt   *time.Time `json:"lastVisitedAt"`
 }
 
-// optTime tells an absent key from null: T3 derives a completion time only when latestRunCompletedAt is absent.
+// optTime tells an absent key from null, matching T3's `=== undefined` vs `=== null` semantics.
 type optTime struct {
 	Set bool
 	T   *time.Time
@@ -64,6 +77,16 @@ type optTime struct {
 func (o *optTime) UnmarshalJSON(b []byte) error {
 	o.Set = true
 	return json.Unmarshal(b, &o.T)
+}
+
+type optString struct {
+	Set bool
+	S   *string
+}
+
+func (o *optString) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	return json.Unmarshal(b, &o.S)
 }
 
 type shellProject struct {

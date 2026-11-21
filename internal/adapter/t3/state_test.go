@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -108,25 +106,28 @@ func newFixtureTracker(t *testing.T) *tracker {
 
 func id(n int) agent.ID { return agent.ID{Orchestrator: "t3", Source: "local", Native: native(n)} }
 
-// A blocked thread's time is when its request came, not when its run started.
 func fixtureAgents() []agent.Agent {
-	a := func(n int, title, project, where string, kind agent.Kind, st agent.State, why agent.BlockedWhy, since string) agent.Agent {
-		return agent.Agent{ID: id(n), Info: agent.Info{Project: project, Title: title, Where: where, Kind: kind}, State: st, BlockedWhy: why, Since: mustTime(since)}
+	a := func(n int, title, project, where string, kind agent.Kind, st agent.State, why agent.BlockedWhy, since, sortAt string) agent.Agent {
+		return agent.Agent{
+			ID:         id(n),
+			Info:       agent.Info{Project: project, Title: title, Where: where, Kind: kind},
+			State:      st,
+			BlockedWhy: why,
+			Since:      mustTime(since),
+			SortAt:     mustTime(sortAt),
+		}
 	}
-	child := a(10, "Review the parser changes", "perch", "/Users/dev/perch", "codex", agent.Blocked, agent.WhyPermission, "2026-11-20T10:03:00Z")
-	child.Parent = native(1)
 	return []agent.Agent{
-		a(1, "Refactor the parser", "perch", "feat/parser", "claude", agent.Working, "", "2026-11-20T09:58:00Z"),
-		a(2, "Write release notes", "perch", "/Users/dev/worktrees/notes", "codex", agent.Done, "", "2026-11-20T10:02:00Z"),
-		a(3, "Fix the login bug", "perch", "/Users/dev/perch", "codex", agent.Idle, "", "2026-11-20T09:30:00Z"),
-		a(4, "Migrate the database", "perch", "/Users/dev/perch", "codex", agent.Blocked, agent.WhyPermission, "2026-11-20T10:03:00Z"),
-		a(5, "Pick a name", "perch", "/Users/dev/perch", "codex", agent.Blocked, agent.WhyQuestion, "2026-11-20T10:03:00Z"),
-		a(6, "Deploy preview", "perch", "/Users/dev/perch", "codex", agent.Error, "", "2026-11-20T10:02:00Z"),
-		a(7, "Pinned notes", "perch", "/Users/dev/perch", "codex", agent.Idle, "", "2026-11-20T10:02:00Z"),
-		child,
-		a(11, "Fix the login bug fork", "t3code", "/Users/dev/t3code", "codex", agent.Idle, "", "2026-11-20T09:50:00Z"),
-		a(13, "Plan the auth rewrite", "t3code", "/Users/dev/t3code", "codex", agent.Blocked, agent.WhyPermission, "2026-11-20T10:02:00Z"),
-		a(14, "Shared with a guest", "t3code", "/Users/dev/t3code", "codex", agent.Blocked, agent.WhyOther, "2026-11-20T10:02:00Z"),
+		a(1, "Refactor the parser", "perch", "feat/parser", "claude", agent.Working, "", "2026-11-20T09:58:01Z", "2026-11-20T09:58:00Z"),
+		a(2, "Write release notes", "perch", "/Users/dev/worktrees/notes", "codex", agent.Done, "", "2026-11-20T10:02:00Z", "2026-11-20T10:02:00Z"),
+		a(3, "Fix the login bug", "perch", "/Users/dev/perch", "codex", agent.Idle, "", "2026-11-20T09:58:01Z", "2026-11-20T09:58:00Z"),
+		a(4, "Migrate the database", "perch", "/Users/dev/perch", "codex", agent.Blocked, agent.WhyPermission, "2026-11-20T10:03:00Z", "2026-11-20T09:58:00Z"),
+		a(5, "Pick a name", "perch", "/Users/dev/perch", "codex", agent.Blocked, agent.WhyQuestion, "2026-11-20T10:03:00Z", "2026-11-20T09:58:00Z"),
+		a(6, "Deploy preview", "perch", "/Users/dev/perch", "codex", agent.Error, "", "2026-11-20T10:02:00Z", "2026-11-20T10:02:00Z"),
+		a(7, "Pinned notes", "perch", "/Users/dev/perch", "codex", agent.Idle, "", "2026-11-20T10:02:00Z", "2026-11-20T10:02:00Z"),
+		a(11, "Fix the login bug fork", "t3code", "/Users/dev/t3code", "codex", agent.Idle, "", "2026-11-20T09:58:00Z", "2026-11-20T09:00:00Z"),
+		a(13, "Plan the auth rewrite", "t3code", "/Users/dev/t3code", "codex", agent.Done, "", "2026-11-20T10:02:00Z", "2026-11-20T10:02:00Z"),
+		a(14, "Shared with a guest", "t3code", "/Users/dev/t3code", "codex", agent.Blocked, agent.WhyRequest, "2026-11-20T10:02:00Z", "2026-11-20T10:02:00Z"),
 	}
 }
 
@@ -234,7 +235,7 @@ func TestSnoozeEndsEarlyOnApproval(t *testing.T) {
 	got := tr.apply(threadUpdated(t, 121, "active", fixtureThread(t, 8,
 		"pendingRuntimeRequest", map[string]any{"id": "req-1", "kind": "command", "createdAt": "2026-11-20T10:04:00.000Z"})), testNow)
 	want := agent.Agent{ID: id(8), Info: agent.Info{Project: "perch", Title: "Snoozed until tomorrow", Where: "/Users/dev/perch", Kind: "codex"},
-		State: agent.Blocked, BlockedWhy: agent.WhyPermission, Since: mustTime("2026-11-20T10:04:00Z")}
+		State: agent.Blocked, BlockedWhy: agent.WhyPermission, Since: mustTime("2026-11-20T10:04:00Z"), SortAt: mustTime("2026-11-20T10:02:00Z")}
 	expectEvents(t, got, agent.Upsert{Agent: want})
 }
 
@@ -244,18 +245,23 @@ func TestSnoozeKeepsAnOldQuestion(t *testing.T) {
 		"pendingRuntimeRequest", map[string]any{"id": "req-1", "kind": "user_input", "createdAt": "2026-11-20T10:00:00.000Z"})), testNow))
 }
 
-func TestSnoozeWakesAtItsDeadline(t *testing.T) {
+func TestSnoozeWakesAtItsDeadlineAsWokeAndClearsOnVisit(t *testing.T) {
 	tr := newFixtureTracker(t)
 	wake := mustTime("2026-11-21T09:00:00Z")
 	if d, ok := tr.deadline(); !ok || !d.Equal(wake) {
 		t.Fatalf("deadline = %v %v, want %v", d, ok, wake)
 	}
 	want := agent.Agent{ID: id(8), Info: agent.Info{Project: "perch", Title: "Snoozed until tomorrow", Where: "/Users/dev/perch", Kind: "codex"},
-		State: agent.Done, Since: mustTime("2026-11-20T10:02:00Z")}
+		State: agent.Blocked, BlockedWhy: agent.WhyWoke, Since: wake, SortAt: mustTime("2026-11-20T10:02:00Z")}
 	expectEvents(t, tr.expire(wake), agent.Upsert{Agent: want})
 	if _, ok := tr.deadline(); ok {
 		t.Fatal("deadline still set after the snooze ended")
 	}
+
+	// Visiting after the wake clears Woke to Idle.
+	visited := fixtureThread(t, 8, "lastVisitedAt", iso(wake.Add(time.Minute)))
+	want.State, want.BlockedWhy, want.Since = agent.Idle, "", mustTime("2026-11-20T10:02:00Z")
+	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", visited), wake.Add(time.Minute)), agent.Upsert{Agent: want})
 }
 
 func TestProjectUpdateRenamesItsThreads(t *testing.T) {
@@ -289,18 +295,18 @@ func TestProjectUpdateRenamesItsThreads(t *testing.T) {
 
 func TestWorkingHoldsThroughTheGrace(t *testing.T) {
 	tr := newFixtureTracker(t)
-	held := fixtureAgent(1)
-	held.Since = testNow
-	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", stopped(t, 1, testNow)), testNow), agent.Upsert{Agent: held})
+	// During the 2s exit grace, the thread stays Working with its original activity start.
+	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", stopped(t, 1, testNow)), testNow))
 	d, ok := tr.deadline()
 	if want := testNow.Add(2 * time.Second); !ok || !d.Equal(want) {
 		t.Fatalf("deadline = %v %v, want %v", d, ok, want)
 	}
 	expectEvents(t, tr.expire(testNow.Add(time.Second)))
 
+	exitAt := testNow.Add(2 * time.Second)
 	want := fixtureAgent(1)
-	want.State, want.Since = agent.Done, testNow
-	expectEvents(t, tr.expire(testNow.Add(2*time.Second)), agent.Upsert{Agent: want})
+	want.State, want.Since, want.SortAt = agent.Done, testNow, exitAt
+	expectEvents(t, tr.expire(exitAt), agent.Upsert{Agent: want})
 	if d, _ := tr.deadline(); d.Before(testNow.Add(time.Hour)) {
 		t.Fatalf("grace deadline still armed: %v", d)
 	}
@@ -308,14 +314,14 @@ func TestWorkingHoldsThroughTheGrace(t *testing.T) {
 
 func TestRestartWithinTheGraceStaysWorking(t *testing.T) {
 	tr := newFixtureTracker(t)
-	held := fixtureAgent(1)
-	held.Since = testNow
-	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", stopped(t, 1, testNow)), testNow), agent.Upsert{Agent: held})
+	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", stopped(t, 1, testNow)), testNow))
 	later := testNow.Add(time.Second)
-	restarted := fixtureThread(t, 1, "latestRunId", "run-1b", "activeRunId", "run-1b", "latestRunRequestedAt", iso(later), "updatedAt", iso(later))
+	restarted := fixtureThread(t, 1, "latestRunId", "run-1b", "activeRunId", "run-1b",
+		"latestRunRequestedAt", iso(later), "latestRunStartedAt", iso(later),
+		"activityRunStartedAt", iso(later), "latestUserAuthoredMessageAt", iso(later), "updatedAt", iso(later))
 	got := tr.apply(threadUpdated(t, 122, "active", restarted), later)
 	want := fixtureAgent(1)
-	want.Since = later
+	want.Since, want.SortAt = later, later
 	expectEvents(t, got, agent.Upsert{Agent: want})
 	if d, _ := tr.deadline(); d.Before(testNow.Add(time.Hour)) {
 		t.Fatalf("grace deadline still armed: %v", d)
@@ -328,16 +334,17 @@ func TestGraceIsSkipped(t *testing.T) {
 		state  agent.State
 		why    agent.BlockedWhy
 		since  time.Time
+		sortAt time.Time
 	}{
-		"blocked": {stopped(t, 1, testNow, "pendingRuntimeRequest", map[string]any{"id": "r", "kind": "permission", "createdAt": iso(testNow)}), agent.Blocked, agent.WhyPermission, testNow},
-		"error":   {stopped(t, 1, testNow, "status", "failed"), agent.Error, "", testNow},
-		"stale":   {stopped(t, 1, testNow.Add(-time.Minute)), agent.Done, "", testNow.Add(-time.Minute)},
+		"blocked": {stopped(t, 1, testNow, "pendingRuntimeRequest", map[string]any{"id": "r", "kind": "permission", "createdAt": iso(testNow)}), agent.Blocked, agent.WhyPermission, testNow, testNow},
+		"error":   {stopped(t, 1, testNow, "status", "failed"), agent.Error, "", testNow, testNow},
+		"stale":   {stopped(t, 1, testNow.Add(-time.Minute)), agent.Done, "", testNow.Add(-time.Minute), testNow},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			tr := newFixtureTracker(t)
 			want := fixtureAgent(1)
-			want.State, want.BlockedWhy, want.Since = c.state, c.why, c.since
+			want.State, want.BlockedWhy, want.Since, want.SortAt = c.state, c.why, c.since, c.sortAt
 			expectEvents(t, tr.apply(threadUpdated(t, 121, "active", c.thread), testNow), agent.Upsert{Agent: want})
 		})
 	}
@@ -346,32 +353,192 @@ func TestGraceIsSkipped(t *testing.T) {
 func TestMovedThreadSkipsTheGrace(t *testing.T) {
 	tr := newFixtureTracker(t)
 	want := fixtureAgent(1)
-	want.State, want.Since = agent.Done, testNow
+	want.State, want.Since, want.SortAt = agent.Done, testNow, testNow
 	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", stopped(t, 1, testNow, "pinnedAt", iso(testNow))), testNow), agent.Upsert{Agent: want})
 }
 
-func TestBackgroundWorkKeepsWorking(t *testing.T) {
+func TestWaitingStates(t *testing.T) {
+	t.Run("background work shows Waiting from completedAt", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		doneAt := testNow.Add(-10 * time.Minute)
+		th := stopped(t, 3, doneAt, "pendingBackgroundTasks", []any{map[string]any{"taskId": "t1", "kind": "subagent"}})
+		want := fixtureAgent(3)
+		want.State, want.WorkingKind, want.Since = agent.Working, agent.WorkWaiting, doneAt
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
+	})
+	t.Run("blockedOnThreadWait shows Waiting with no duration", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 1, "blockedOnThreadWait", true)
+		want := fixtureAgent(1)
+		want.State, want.WorkingKind, want.Since = agent.Working, agent.WorkWaiting, time.Time{}
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
+	})
+	t.Run("preparing shows Setting up and active goal shows Goal", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 1, "activityRunStatus", "preparing", "status", "preparing")
+		want := fixtureAgent(1)
+		want.WorkingKind = agent.WorkPreparing
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
+
+		th2 := fixtureThread(t, 1, "goal", map[string]any{"status": "active"})
+		want.WorkingKind = agent.WorkGoal
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", th2), testNow), agent.Upsert{Agent: want})
+	})
+}
+
+func TestFailureVisitAndUsageLimit(t *testing.T) {
+	t.Run("visited failure settles to Idle", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 6, "lastVisitedAt", "2026-11-20T10:03:00.000Z")
+		want := fixtureAgent(6)
+		want.State = agent.Idle
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
+	})
+	t.Run("never-visited failure stays Error", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 6, "lastVisitedAt", nil)
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow))
+	})
+	t.Run("stale lastError on a running thread stays Working", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 1, "lastError", "old error")
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow))
+	})
+	t.Run("usage_limit failure shows Limited and stays after visit", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		th := fixtureThread(t, 6, "lastErrorClass", "usage_limit", "lastVisitedAt", "2026-11-20T10:03:00.000Z")
+		want := fixtureAgent(6)
+		want.State, want.BlockedWhy = agent.Blocked, agent.WhyLimited
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
+	})
+}
+
+func TestPlanActiveRunIsWorking(t *testing.T) {
 	tr := newFixtureTracker(t)
-	th := stopped(t, 3, testNow.Add(-10*time.Minute), "pendingBackgroundTasks", []any{map[string]any{"taskId": "t1", "kind": "subagent"}})
-	want := fixtureAgent(3)
-	want.State, want.Since = agent.Working, testNow.Add(-10*time.Minute)
+	th := fixtureThread(t, 13,
+		"status", "running", "activeRunId", "run-13b", "latestRunId", "run-13b",
+		"latestRunCompletedAt", nil, "activityRunStatus", "running",
+		"activityRunStartedAt", "2026-11-20T10:04:00.000Z", "latestUserAuthoredMessageAt", "2026-11-20T10:04:00.000Z")
+	want := fixtureAgent(13)
+	want.State, want.Since, want.SortAt = agent.Working, mustTime("2026-11-20T10:04:00Z"), mustTime("2026-11-20T10:04:00Z")
 	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", th), testNow), agent.Upsert{Agent: want})
 }
 
-// T3 lists a sub-agent or side chat only under its parent, so it goes when the parent does.
-func TestChildGoesWithItsParent(t *testing.T) {
-	cases := map[string]item{}
-	cases["settled"] = threadUpdated(t, 121, "active", fixtureThread(t, 1, "settledOverride", "settled"))
-	cases["archived"] = threadUpdated(t, 121, "archive", fixtureThread(t, 1, "archivedAt", "2026-11-20T10:04:00.000Z"))
-	cases["removed"] = decode(t, []byte(`{"kind":"thread.removed","sequence":121,"location":"active","threadId":"`+tid(1)+`"}`))
-	for name, it := range cases {
-		t.Run(name, func(t *testing.T) {
-			tr := newFixtureTracker(t)
-			got := tr.apply(it, testNow)
-			slices.SortFunc(got, func(a, b agent.Event) int {
-				return strings.Compare(a.(agent.Remove).ID.Native, b.(agent.Remove).ID.Native)
-			})
-			expectEvents(t, got, agent.Remove{ID: id(1)}, agent.Remove{ID: id(10)})
-		})
+func TestSubagentRollupMatchesT3(t *testing.T) {
+	sub := func(idStr, parentID, src string, kv ...any) map[string]any {
+		base := fixtureThread(t, 10,
+			"id", idStr,
+			"creationSource", src,
+			"lineage", map[string]any{"parentThreadId": parentID, "relationshipToParent": "subagent", "rootThreadId": parentID},
+		)
+		for i := 0; i < len(kv); i += 2 {
+			base[kv[i].(string)] = kv[i+1]
+		}
+		return base
 	}
+	t.Run("delegated subagent approval blocks parent and wakes snoozed parent", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		child := sub("sub-1", tid(8), "mcp")
+		got := tr.apply(threadUpdated(t, 121, "active", child), testNow)
+		want := agent.Agent{
+			ID: id(8), Info: agent.Info{Project: "perch", Title: "Snoozed until tomorrow", Where: "/Users/dev/perch", Kind: "codex"},
+			State: agent.Blocked, BlockedWhy: agent.WhyPermission,
+			Since: mustTime("2026-11-20T10:03:00Z"), SortAt: mustTime("2026-11-20T10:02:00Z"),
+		}
+		expectEvents(t, got, agent.Upsert{Agent: want})
+	})
+	t.Run("delegated subagent normal user_input does not block parent, userOnly does", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		normalQ := sub("sub-q", tid(3), "mcp",
+			"pendingRuntimeRequest", map[string]any{"id": "rq", "kind": "user_input", "createdAt": "2026-11-20T10:04:00.000Z", "userOnly": false})
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", normalQ), testNow))
+
+		userOnlyQ := sub("sub-q", tid(3), "mcp",
+			"pendingRuntimeRequest", map[string]any{"id": "rq", "kind": "user_input", "createdAt": "2026-11-20T10:04:00.000Z", "userOnly": true})
+		want := fixtureAgent(3)
+		want.State, want.BlockedWhy, want.Since = agent.Blocked, agent.WhyQuestion, mustTime("2026-11-20T10:04:00Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", userOnlyQ), testNow), agent.Upsert{Agent: want})
+	})
+	t.Run("failed or non-live subagent does not affect parent", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		failedChild := sub("sub-f", tid(3), "mcp",
+			"status", "failed", "activeRunId", nil, "activityRunStatus", nil, "pendingRuntimeRequest", nil, "lastError", "boom")
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", failedChild), testNow))
+
+		endedReq := sub("sub-e", tid(3), "mcp",
+			"status", "completed", "activeRunId", nil, "activityRunStatus", nil,
+			"pendingRuntimeRequest", map[string]any{"id": "rq", "kind": "command", "createdAt": "2026-11-20T10:04:00.000Z"})
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", endedReq), testNow))
+	})
+}
+
+func TestSidechatIsHiddenAndRollsUpRequests(t *testing.T) {
+	side := func(idStr, parentID string, kv ...any) map[string]any {
+		base := fixtureThread(t, 1,
+			"id", idStr,
+			"title", "Side question",
+			"lineage", map[string]any{"parentThreadId": parentID, "relationshipToParent": "fork", "rootThreadId": parentID, "sideChat": true},
+		)
+		for i := 0; i < len(kv); i += 2 {
+			base[kv[i].(string)] = kv[i+1]
+		}
+		return base
+	}
+
+	t.Run("running and completed sidechats do not emit rows or change parent state", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		running := side("side-1", tid(3), "activityRunStartedAt", "2026-11-20T10:04:00.000Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", running), testNow))
+
+		done := side("side-1", tid(3),
+			"status", "completed", "activeRunId", nil, "activityRunStatus", nil, "activityRunStartedAt", nil,
+			"latestRunCompletedAt", "2026-11-20T10:04:30.000Z", "lastVisitedAt", "2026-11-20T10:03:00.000Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", done), testNow))
+	})
+
+	t.Run("sidechat user_input and approval roll up to parent", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		q := side("side-q", tid(3),
+			"pendingRuntimeRequest", map[string]any{"id": "rq", "kind": "user_input", "createdAt": "2026-11-20T10:04:00.000Z"})
+		want := fixtureAgent(3)
+		want.State, want.BlockedWhy, want.Since = agent.Blocked, agent.WhyQuestion, mustTime("2026-11-20T10:04:00Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", q), testNow), agent.Upsert{Agent: want})
+
+		ap := side("side-q", tid(3),
+			"pendingRuntimeRequest", map[string]any{"id": "ra", "kind": "command", "createdAt": "2026-11-20T10:04:30.000Z"})
+		want.BlockedWhy, want.Since = agent.WhyPermission, mustTime("2026-11-20T10:04:30Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", ap), testNow), agent.Upsert{Agent: want})
+	})
+
+	t.Run("subagent approval under a sidechat walks through the sidechat to the listed parent", func(t *testing.T) {
+		tr := newFixtureTracker(t)
+		idleSide := side("side-4", tid(3),
+			"status", "completed", "activeRunId", nil, "activityRunStatus", nil, "activityRunStartedAt", nil,
+			"latestRunCompletedAt", "2026-11-20T10:02:00.000Z", "lastVisitedAt", "2026-11-20T10:03:00.000Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 121, "active", idleSide), testNow))
+
+		sub := fixtureThread(t, 10,
+			"id", "sub-under-side",
+			"creationSource", "mcp",
+			"lineage", map[string]any{"parentThreadId": "side-4", "relationshipToParent": "subagent", "rootThreadId": tid(3)},
+		)
+		want := fixtureAgent(3)
+		want.State, want.BlockedWhy, want.Since = agent.Blocked, agent.WhyPermission, mustTime("2026-11-20T10:03:00Z")
+		expectEvents(t, tr.apply(threadUpdated(t, 122, "active", sub), testNow), agent.Upsert{Agent: want})
+	})
+}
+
+func TestSortTimestampsMatchT3(t *testing.T) {
+	tr := newFixtureTracker(t)
+	// Un-settling an idle thread bumps SortAt to unsettledAt without changing display Since.
+	unsettled := fixtureThread(t, 3, "unsettledAt", "2026-11-20T10:04:30.000Z")
+	want := fixtureAgent(3)
+	want.SortAt = mustTime("2026-11-20T10:04:30Z")
+	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", unsettled), testNow), agent.Upsert{Agent: want})
+}
+
+func TestParentRemovalLeavesNoOrphanChild(t *testing.T) {
+	tr := newFixtureTracker(t)
+	expectEvents(t, tr.apply(threadUpdated(t, 121, "active", fixtureThread(t, 1, "settledOverride", "settled")), testNow),
+		agent.Remove{ID: id(1)})
 }

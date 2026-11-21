@@ -11,10 +11,11 @@ import (
 type Row struct {
 	ID agent.ID
 	agent.Info
-	State           agent.State
-	BlockedWhy      agent.BlockedWhy
-	At              time.Time // inbox: when it came back to you; running: when it started
-	WorkingChildren int
+	State       agent.State
+	BlockedWhy  agent.BlockedWhy
+	WorkingKind agent.WorkingKind
+	At          time.Time // display time (inbox idle: last activity; running: work/wait start; may be zero)
+	SortAt      time.Time // sort time, newest first
 }
 
 type Disconnect struct {

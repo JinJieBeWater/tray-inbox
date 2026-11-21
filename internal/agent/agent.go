@@ -36,6 +36,18 @@ const (
 	WhyOther      BlockedWhy = ""
 	WhyPermission BlockedWhy = "permission"
 	WhyQuestion   BlockedWhy = "question"
+	WhyRequest    BlockedWhy = "request"
+	WhyLimited    BlockedWhy = "limited"
+	WhyWoke       BlockedWhy = "woke"
+)
+
+type WorkingKind string
+
+const (
+	WorkRunning   WorkingKind = ""
+	WorkPreparing WorkingKind = "preparing"
+	WorkGoal      WorkingKind = "goal"
+	WorkWaiting   WorkingKind = "waiting"
 )
 
 // Kind is an agent's type. It only picks an icon; adapters map their native names onto these,
@@ -79,10 +91,12 @@ type Info struct {
 type Agent struct {
 	ID ID
 	Info
-	State      State
-	BlockedWhy BlockedWhy
-	Since      time.Time // when the orchestrator says the current state began; may be zero
-	Parent     string    // native id of the parent agent in the same source, may be empty
+	State       State
+	BlockedWhy  BlockedWhy
+	WorkingKind WorkingKind
+	Since       time.Time // when the orchestrator says the current state/display timer began; may be zero
+	SortAt      time.Time // optional sort timestamp from the orchestrator; zero falls back to At
+	Parent      string    // native id of the parent agent in the same source, may be empty
 }
 
 type Event interface{ event() }

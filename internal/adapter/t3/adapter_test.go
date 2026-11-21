@@ -457,14 +457,12 @@ func TestGraceEndsOnTheInjectedTimer(t *testing.T) {
 
 	c.send(t, chunk(encode(t, map[string]any{"kind": "thread.updated", "sequence": 121, "location": "active", "thread": stopped(t, 1, testNow)})))
 	c.expectAck(t)
-	held := fixtureAgent(1)
-	held.Since = testNow
-	h.expect(t, agent.Upsert{Agent: held})
 	timer := h.afterFor(t, workingExitGrace)
-	h.clock.set(testNow.Add(workingExitGrace))
-	timer.ch <- testNow.Add(workingExitGrace)
-	done := held
-	done.State = agent.Done
+	exitAt := testNow.Add(workingExitGrace)
+	h.clock.set(exitAt)
+	timer.ch <- exitAt
+	done := fixtureAgent(1)
+	done.State, done.Since, done.SortAt = agent.Done, testNow, exitAt
 	h.expect(t, agent.Upsert{Agent: done})
 }
 
