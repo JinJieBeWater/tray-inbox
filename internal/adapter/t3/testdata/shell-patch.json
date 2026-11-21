@@ -1,0 +1,33 @@
+{
+  "kind": "snapshot",
+  "snapshot": {
+    "schemaVersion": 1,
+    "snapshotSequence": 121,
+    "threads": [],
+    "archivedThreads": [],
+    "projects": [
+      {
+        "id": "5b0d3c1e-7a4f-4c1b-9d2e-1f6a8b3c4d01",
+        "title": "perch",
+        "workspaceRoot": "/Users/dev/perch",
+        "repositoryIdentity": {
+          "canonicalKey": "github.com/dev/perch",
+          "locator": {
+            "source": "git-remote",
+            "remoteName": "origin",
+            "remoteUrl": "git@github.com:dev/perch.git"
+          }
+        },
+        "defaultModelSelection": null,
+        "scripts": [],
+        "pinnedAt": null,
+        "archivedAt": null,
+        "createdAt": "2026-11-01T00:00:00.000Z",
+        "updatedAt": "2026-11-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "resolvedRepositoryIdentityRoots": [
+    "/Users/dev/perch"
+  ]
+}

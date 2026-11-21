@@ -1,0 +1,24 @@
+{
+  "environment": {
+    "environmentId": "9c1f5e2a-4b7d-4f10-8e3a-6d5c4b3a2f10",
+    "label": "Local",
+    "platform": { "os": "darwin", "arch": "arm64" },
+    "serverVersion": "0.0.0-nightly",
+    "orchestrationProtocolVersion": 2,
+    "capabilities": { "repositoryIdentity": true }
+  },
+  "auth": { "policy": "loopback-browser", "bootstrapMethods": ["one-time-token"], "sessionMethods": ["browser-session-cookie", "bearer-access-token"], "sessionCookieName": "t3_session" },
+  "cwd": "/Users/dev",
+  "hostname": "dev-mac",
+  "keybindingsConfigPath": "/Users/dev/.t3/userdata/keybindings.json",
+  "keybindings": [],
+  "issues": [],
+  "providers": [
+    { "instanceId": "claude-work", "driver": "claudeAgent", "displayName": "Claude (work)" },
+    { "instanceId": "codex", "driver": "codex", "displayName": "Codex" },
+    { "instanceId": "pi", "driver": "pi", "displayName": "Pi" }
+  ],
+  "availableEditors": [],
+  "observability": { "logsDirectoryPath": "/Users/dev/.t3/userdata/logs", "localTracingEnabled": false, "otlpTracesEnabled": false, "otlpMetricsEnabled": false, "otlpLogsEnabled": false },
+  "settings": {}
+}

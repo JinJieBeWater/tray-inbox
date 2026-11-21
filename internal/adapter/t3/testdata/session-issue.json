@@ -1,0 +1,13 @@
+{
+  "sessionId": "3f6d2b8a-1c4e-4a7b-9e0d-5f2a1b3c4d5e",
+  "token": "fresh-token",
+  "method": "bearer-access-token",
+  "scopes": [
+    "orchestration:read"
+  ],
+  "subject": "cli",
+  "client": {
+    "label": "perch"
+  },
+  "expiresAt": "2026-12-20T10:05:00.000Z"
+}
