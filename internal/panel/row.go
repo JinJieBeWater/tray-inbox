@@ -17,7 +17,7 @@ func (p *Panel) row(c *ui.Context, r inbox.Row, pal palette, now time.Time) {
 	if hovered {
 		b.Background(pal.hover)
 	}
-	if r.State == agent.Working && r.WorkingKind != agent.WorkWaiting && !hovered {
+	if r.State == agent.Working && !hovered {
 		b.Opacity(.7)
 	}
 	id := r.ID
