@@ -63,9 +63,13 @@ func (p *Panel) View(c *ui.Context) {
 	_, h := c.Size()
 	bar := ui.ScrollbarStyle{TrackWidth: 10, ThumbWidth: 7, Thumb: c.Theme().Border}
 	ui.Scroll(c).Fill().Scrollbars(p.maxH > 0 && h >= p.maxH-1).ScrollbarStyle(bar).Children(func() {
-		ui.Column(c).Padding(8).Gap(8).AlignItems(ui.Stretch).Children(func() {
-			for i, d := range p.view.Disconnected {
-				disconnect(c.Key(dcKey(i)), d, pal)
+		ui.Column(c).Padding(0, 8, 8).AlignItems(ui.Stretch).Children(func() {
+			if len(p.view.Disconnected) > 0 {
+				ui.Column(c).Padding(8, 0, 0).Gap(8).AlignItems(ui.Stretch).Children(func() {
+					for i, d := range p.view.Disconnected {
+						disconnect(c.Key(dcKey(i)), d, pal)
+					}
+				})
 			}
 			if len(p.view.Inbox) > 0 || len(p.view.Disconnected) == 0 {
 				section(c).Children(func() {
@@ -132,8 +136,9 @@ func reason(r agent.Reason) string {
 func section(c *ui.Context) ui.Element { return ui.Column(c).Gap(5).AlignItems(ui.Stretch) }
 
 // sticky holds a section's header at the top while its rows scroll under it.
+// It carries the gap above the header, so the header sits where it does unscrolled.
 func sticky(c *ui.Context, pal palette) ui.Element {
-	return ui.Column(c).AlignItems(ui.Stretch).Background(pal.panel).Sticky().Top(0)
+	return ui.Column(c).Padding(8, 0, 0).AlignItems(ui.Stretch).Background(pal.panel).Sticky().Top(0)
 }
 
 // headerStyle is T3's section header: the headers are the dividers, the rows carry no background.
