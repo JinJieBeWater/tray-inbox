@@ -61,8 +61,8 @@ func (p *Panel) View(c *ui.Context) {
 		}
 	}
 	_, h := c.Size()
-	// The bar lives in the content's 8 DIP gutter, clear of the rows' hover background and the window's corners.
-	ui.Scroll(c).Fill().Scrollbars(p.maxH > 0 && h >= p.maxH-1).ScrollbarStyle(ui.ScrollbarStyle{TrackWidth: 8, ThumbWidth: 4}).ScrollbarInsets(8, 0).Children(func() {
+	bar := ui.ScrollbarStyle{TrackWidth: 10, ThumbWidth: 7, Thumb: c.Theme().Border}
+	ui.Scroll(c).Fill().Scrollbars(p.maxH > 0 && h >= p.maxH-1).ScrollbarStyle(bar).Children(func() {
 		ui.Column(c).Padding(8).Gap(8).AlignItems(ui.Stretch).Children(func() {
 			for i, d := range p.view.Disconnected {
 				disconnect(c.Key(dcKey(i)), d, pal)
@@ -75,11 +75,13 @@ func (p *Panel) View(c *ui.Context) {
 							n++
 						}
 					}
-					headerStyle(ui.Row(c), pal).Children(func() {
-						ui.Text(c, locales.Inbox()).SingleLine().Grow(1)
-						if n > 0 {
-							ui.Text(c, locales.Unread(n)).FontWeight(400).FontFeatures("tnum")
-						}
+					sticky(c, pal).Children(func() {
+						headerStyle(ui.Row(c), pal).Children(func() {
+							ui.Text(c, locales.Inbox()).SingleLine().Grow(1)
+							if n > 0 {
+								ui.Text(c, locales.Unread(n)).FontWeight(400).FontFeatures("tnum")
+							}
+						})
 					})
 					for _, r := range p.view.Inbox {
 						show(r)
@@ -92,7 +94,7 @@ func (p *Panel) View(c *ui.Context) {
 			if n := len(p.view.Running); n > 0 {
 				section(c).Children(func() {
 					open := p.runningOpen()
-					p.header(c, n, open, pal)
+					sticky(c, pal).Children(func() { p.header(c, n, open, pal) })
 					if open {
 						for _, r := range p.view.Running {
 							show(r)
@@ -128,6 +130,11 @@ func reason(r agent.Reason) string {
 }
 
 func section(c *ui.Context) ui.Element { return ui.Column(c).Gap(5).AlignItems(ui.Stretch) }
+
+// sticky holds a section's header at the top while its rows scroll under it.
+func sticky(c *ui.Context, pal palette) ui.Element {
+	return ui.Column(c).AlignItems(ui.Stretch).Background(pal.panel).Sticky().Top(0)
+}
 
 // headerStyle is T3's section header: the headers are the dividers, the rows carry no background.
 func headerStyle(e ui.Element, pal palette) ui.Element {
