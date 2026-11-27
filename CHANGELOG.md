@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+
+- The Inbox and Working headers stay at the top of the panel while their threads scroll under them.
+- The scroll bar is thinner and lighter, and no longer covers the highlighted row.
+
 ## 0.1.3
 
 - Waiting threads in Working now fade like other working threads.
