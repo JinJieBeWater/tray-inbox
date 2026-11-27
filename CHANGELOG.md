@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Waiting threads in Working now fade like other working threads.
+
 ## 0.1.2
 
 When no agents are listed, the menu bar icon shows T3 and clicks straight back to T3 Code.
