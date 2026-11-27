@@ -61,7 +61,8 @@ func (p *Panel) View(c *ui.Context) {
 		}
 	}
 	_, h := c.Size()
-	ui.Scroll(c).Fill().Scrollbars(p.maxH > 0 && h >= p.maxH-1).Children(func() {
+	// The bar lives in the content's 8 DIP gutter, clear of the rows' hover background and the window's corners.
+	ui.Scroll(c).Fill().Scrollbars(p.maxH > 0 && h >= p.maxH-1).ScrollbarStyle(ui.ScrollbarStyle{TrackWidth: 8, ThumbWidth: 4}).ScrollbarInsets(8, 0).Children(func() {
 		ui.Column(c).Padding(8).Gap(8).AlignItems(ui.Stretch).Children(func() {
 			for i, d := range p.view.Disconnected {
 				disconnect(c.Key(dcKey(i)), d, pal)
